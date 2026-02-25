@@ -317,6 +317,27 @@ npm run build    # production build
 
 ---
 
+## Contributing
+
+Contributions are welcome! Whether it's a bug fix, new command, or documentation improvement — all PRs are appreciated.
+
+```bash
+# Fork and clone
+git clone https://github.com/YOUR_USERNAME/obsidian-vault-cli.git
+cd obsidian-vault-cli
+npm install
+
+# Make your changes
+npm run build
+npm test
+
+# Submit a PR
+```
+
+If you find `obs` useful, consider giving it a star — it helps others discover the project.
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
