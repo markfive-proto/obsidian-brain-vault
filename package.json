@@ -1,0 +1,31 @@
+{
+  "name": "obsidian-vault-cli",
+  "version": "0.1.0",
+  "description": "Free, open-source CLI for Obsidian vaults — no Catalyst license needed",
+  "type": "module",
+  "bin": {
+    "obs": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": ["obsidian", "cli", "markdown", "vault", "notes"],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "date-fns": "^3.6.0",
+    "fast-glob": "^3.3.2",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

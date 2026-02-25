@@ -1,0 +1,40 @@
+import { Command } from 'commander';
+import { registerVaultCommands } from './vault-cmd.js';
+import { registerFilesCommands } from './files.js';
+import { registerSearchCommands } from './search.js';
+import { registerTagsCommands } from './tags.js';
+import { registerDailyCommands } from './daily.js';
+import { registerPropertiesCommands } from './properties.js';
+import { registerTemplatesCommands } from './templates.js';
+import { registerTasksCommands } from './tasks.js';
+import { registerBookmarksCommands } from './bookmarks.js';
+import { registerLinksCommands } from './links.js';
+import { registerPluginsCommands } from './plugins.js';
+import { registerDevCommands } from './dev.js';
+import { registerSyncCommands } from './sync.js';
+import { registerThemesCommands } from './themes.js';
+import { registerCanvasCommands } from './canvas.js';
+import { registerBasesCommands } from './bases.js';
+import { registerImportCommands } from './import.js';
+import { registerInitCommand } from './init.js';
+
+export function registerAllCommands(program: Command): void {
+  registerVaultCommands(program);
+  registerFilesCommands(program);
+  registerSearchCommands(program);
+  registerTagsCommands(program);
+  registerDailyCommands(program);
+  registerPropertiesCommands(program);
+  registerTemplatesCommands(program);
+  registerTasksCommands(program);
+  registerBookmarksCommands(program);
+  registerLinksCommands(program);
+  registerPluginsCommands(program);
+  registerDevCommands(program);
+  registerSyncCommands(program);
+  registerThemesCommands(program);
+  registerCanvasCommands(program);
+  registerBasesCommands(program);
+  registerImportCommands(program);
+  registerInitCommand(program);
+}
