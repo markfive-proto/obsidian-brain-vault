@@ -1,6 +1,6 @@
-# `obs` — Open Vault CLI
+# `obs` — Cognitive Toolkit for Obsidian
 
-A community-built, open-source CLI for Obsidian vaults.
+A community-built CLI that turns your Obsidian vault into a thinking partner.
 
 > **Note:** This is an unofficial, community-created project. It is not affiliated with or endorsed by Obsidian.
 
@@ -10,12 +10,18 @@ A community-built, open-source CLI for Obsidian vaults.
 
 ## What is this?
 
-`obs` is a command-line tool that lets you manage your Obsidian vault from the terminal. It works by reading and writing vault files directly on disk — no running Obsidian instance needed.
+`obs` is a command-line tool that lets you manage your Obsidian vault from the terminal — and with its **cognitive skill packs**, it turns Claude Code into a thinking partner that works with your vault.
 
+- **Smart queries**: date-range filtering, frontmatter filters, graph traversal, orphan detection, word counts
+- **6 cognitive skill packs**: capture, clarify, connect, reflect, act, review
 - **100+ commands** for files, search, tags, links, tasks, daily notes, and more
 - **JSON output** for scripting and automation
-- **Auto-detects** your vaults on setup
+- **MCP server** for AI tool integration (Claude Desktop, Cursor, Windsurf)
 - **Works alongside** [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for AI agent workflows
+
+### The deeper insight
+
+Many Obsidian users have rich vaults full of ideas but struggle to articulate, connect, or act on their own thinking. `obs` bridges that gap — it's a cognitive prosthetic that helps you find answers already in your vault.
 
 ---
 
@@ -102,6 +108,9 @@ obs vault stats                                 # File counts, sizes, extension 
 obs vault config                                # Print all CLI config
 obs vault config defaultVault                   # Print the default vault path
 obs vault config defaultVault /path/to/vault    # Set the default vault
+obs vault wordcount                            # Total word count across vault
+obs vault wordcount --top 10                   # Top 10 files by word count
+obs vault wordcount --file path/to/note.md     # Word count for a single file
 ```
 
 ### `files` — File operations
@@ -109,6 +118,10 @@ obs vault config defaultVault /path/to/vault    # Set the default vault
 ```bash
 obs files list                                  # List all files
 obs files list --folder Notes --sort modified --limit 20
+obs files list --since 7d --sort modified        # Files modified in last 7 days
+obs files list --since 2w --before 2025-01-01    # Date range filtering
+obs files list --where status=draft              # Filter by frontmatter property
+obs files list --where status=draft --where type=idea  # Multiple filters (AND)
 obs files read path/to/note.md                  # Print file content
 obs files read path/to/note.md --head 10        # First 10 lines
 obs files write path/to/note.md --content "New content"
@@ -200,6 +213,9 @@ obs bookmarks remove path/to/note.md            # Remove a bookmark
 obs links list path/to/note.md                  # Show outgoing links
 obs links outgoing path/to/note.md              # Alias for list
 obs links backlinks path/to/note.md             # Find all files linking to this note
+obs links path "note-a.md" "note-b.md"          # Shortest link path between two notes
+obs links orphans                               # Notes with zero incoming backlinks
+obs links orphans --limit 20
 obs links broken                                # Find all unresolved wikilinks
 obs links broken --limit 20
 ```
@@ -299,6 +315,38 @@ obs search content "TODO" --json | jq '[.[].file] | unique'
 
 ---
 
+## Cognitive Skill Packs
+
+Skill packs turn Claude Code into a thinking partner that works with your vault. Each pack contains slash commands that use `obs` as their toolkit.
+
+### Install a skill pack
+
+```bash
+obs skills list                    # See available packs
+obs skills info capture            # Details about a pack
+obs skills install capture         # Install globally (~/.claude/commands/)
+obs skills install capture --local # Install to current project (.claude/commands/)
+```
+
+### Available packs
+
+| Pack | Commands | What it does |
+|------|----------|--------------|
+| **capture** | `/dump`, `/capture`, `/quick` | Get thoughts out of your head fast. Brain dumps, quick captures, rapid-fire sessions. |
+| **clarify** | `/articulate`, `/expand`, `/simplify` | Rewrite messy notes clearly, expand short ideas, distill to core points. |
+| **connect** | `/connect`, `/trace`, `/drift` | Find how ideas bridge, track evolution over time, surface recurring themes. |
+| **reflect** | `/emerge`, `/challenge`, `/growth` | Find project clusters, challenge assumptions, see how thinking has changed. |
+| **act** | `/next`, `/decide`, `/graduate` | Get focused priorities, gather evidence for decisions, promote buried ideas. |
+| **review** | `/today`, `/closeday`, `/weekly` | Morning planning, evening wrap-up, weekly reflection rituals. |
+
+### How it works
+
+Each skill teaches Claude Code to use `obs` commands to analyze your vault. For example, `/drift` runs `obs files list --since 2w`, `obs tags all`, and `obs search` to surface what you've been circling around — then presents the patterns it finds.
+
+The key insight: Claude isn't generating new ideas. It's reflecting your own thinking back to you, organized and connected.
+
+---
+
 ## Using with obsidian-skills
 
 [obsidian-skills](https://github.com/kepano/obsidian-skills) is an official collection of instruction files that teach AI agents how to work with Obsidian files. `obs` pairs well with it — the skills teach agents the correct file formats, and `obs` gives them (and you) a fast way to query and modify the vault from the terminal.
@@ -349,6 +397,10 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 | `obs_manage_properties` | Read/set frontmatter properties |
 | `obs_daily_note` | Create or read daily notes |
 | `obs_list_links` | Outgoing links, backlinks, broken links |
+| `obs_list_files_filtered` | List files with date-range and frontmatter filters |
+| `obs_links_path` | Find shortest link path between two notes |
+| `obs_links_orphans` | Find notes with zero incoming backlinks |
+| `obs_vault_wordcount` | Word counts per-file and vault-wide |
 
 ---
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
 import { Vault } from '../vault.js';
 import { extractWikilinks, extractMarkdownLinks, extractTasks, extractInlineTags, resolveWikilink } from '../utils/markdown.js';
 import { updateFrontmatter, parseFrontmatter } from '../utils/frontmatter.js';
@@ -349,6 +350,209 @@ export function registerTools(server: McpServer, vault: Vault): void {
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(broken.slice(0, limit), null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_list_files_filtered',
+    'List vault files with date-range and frontmatter filtering',
+    {
+      since: z.string().optional().describe('Duration filter, e.g. "7d", "2w", "1m", "1y"'),
+      before: z.string().optional().describe('Date filter in YYYY-MM-DD format'),
+      where: z.array(z.string()).optional().describe('Frontmatter filters as ["key=value", ...]'),
+      folder: z.string().optional().describe('Filter by folder path'),
+      sort: z.enum(['name', 'modified', 'size']).optional().default('name').describe('Sort field'),
+      limit: z.number().optional().default(50).describe('Max results'),
+    },
+    async ({ since, before, where, folder, sort, limit }) => {
+      let files = await vault.listFiles('**/*');
+
+      if (folder) {
+        const f = folder.replace(/\/$/, '');
+        files = files.filter(file => file.startsWith(f + '/') || file === f);
+      }
+
+      if (since) {
+        const match = since.match(/^(\d+)([dwmy])$/i);
+        if (!match) {
+          return { content: [{ type: 'text' as const, text: 'Error: Invalid since format. Use e.g. 7d, 2w, 1m' }], isError: true };
+        }
+        const amount = parseInt(match[1], 10);
+        const unit = match[2].toLowerCase();
+        const now = new Date();
+        const sinceDate = unit === 'd' ? subDays(now, amount) : unit === 'w' ? subWeeks(now, amount) : unit === 'm' ? subMonths(now, amount) : subYears(now, amount);
+        files = files.filter(f => { try { return vault.fileStat(f).mtime >= sinceDate; } catch { return false; } });
+      }
+
+      if (before) {
+        const beforeDate = new Date(before + 'T23:59:59');
+        if (isNaN(beforeDate.getTime())) {
+          return { content: [{ type: 'text' as const, text: 'Error: Invalid date format. Use YYYY-MM-DD' }], isError: true };
+        }
+        files = files.filter(f => { try { return vault.fileStat(f).mtime <= beforeDate; } catch { return false; } });
+      }
+
+      if (where && where.length > 0) {
+        const filters = where.map(w => {
+          const eqIdx = w.indexOf('=');
+          if (eqIdx === -1) return null;
+          return { key: w.slice(0, eqIdx), value: w.slice(eqIdx + 1) };
+        }).filter(Boolean) as Array<{ key: string; value: string }>;
+
+        files = files.filter(f => {
+          if (!f.endsWith('.md')) return false;
+          try {
+            const parsed = vault.readFile(f);
+            return filters.every(({ key, value }) => {
+              const fmVal = parsed.frontmatter[key];
+              if (fmVal === undefined || fmVal === null) return false;
+              if (Array.isArray(fmVal)) return fmVal.map(String).includes(value);
+              return String(fmVal) === value;
+            });
+          } catch { return false; }
+        });
+      }
+
+      if (sort === 'modified') {
+        files.sort((a, b) => { try { return vault.fileStat(b).mtime.getTime() - vault.fileStat(a).mtime.getTime(); } catch { return 0; } });
+      } else if (sort === 'size') {
+        files.sort((a, b) => { try { return vault.fileStat(b).size - vault.fileStat(a).size; } catch { return 0; } });
+      } else {
+        files.sort((a, b) => a.localeCompare(b));
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(files.slice(0, limit), null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_links_path',
+    'Find the shortest link path between two notes via BFS',
+    {
+      from: z.string().describe('Starting note path or name'),
+      to: z.string().describe('Target note path or name'),
+    },
+    async ({ from, to }) => {
+      const allFiles = await vault.listFiles();
+
+      const resolveNote = (input: string): string | null => {
+        if (allFiles.includes(input)) return input;
+        const withMd = input.endsWith('.md') ? input : input + '.md';
+        if (allFiles.includes(withMd)) return withMd;
+        return resolveWikilink(input.replace(/\.md$/, ''), allFiles);
+      };
+
+      const startFile = resolveNote(from);
+      const endFile = resolveNote(to);
+
+      if (!startFile) return { content: [{ type: 'text' as const, text: `Error: Note not found: ${from}` }], isError: true };
+      if (!endFile) return { content: [{ type: 'text' as const, text: `Error: Note not found: ${to}` }], isError: true };
+
+      const adj = new Map<string, string[]>();
+      for (const file of allFiles) {
+        try {
+          const raw = vault.readFileRaw(file);
+          const wikilinks = extractWikilinks(raw);
+          const neighbors: string[] = [];
+          for (const link of wikilinks) {
+            const resolved = resolveWikilink(link.target, allFiles);
+            if (resolved && resolved !== file) neighbors.push(resolved);
+          }
+          adj.set(file, neighbors);
+        } catch { /* skip */ }
+      }
+
+      const queue: string[][] = [[startFile]];
+      const visited = new Set<string>([startFile]);
+      let foundPath: string[] | null = null;
+
+      while (queue.length > 0) {
+        const path = queue.shift()!;
+        const current = path[path.length - 1];
+        if (current === endFile) { foundPath = path; break; }
+        for (const neighbor of (adj.get(current) ?? [])) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push([...path, neighbor]);
+          }
+        }
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ from: startFile, to: endFile, path: foundPath, hops: foundPath ? foundPath.length - 1 : null }, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_links_orphans',
+    'Find notes with zero incoming backlinks',
+    {
+      limit: z.number().optional().default(50).describe('Max results'),
+    },
+    async ({ limit }) => {
+      const allFiles = await vault.listFiles();
+      const linkedTo = new Set<string>();
+
+      for (const file of allFiles) {
+        try {
+          const raw = vault.readFileRaw(file);
+          for (const link of extractWikilinks(raw)) {
+            const resolved = resolveWikilink(link.target, allFiles);
+            if (resolved) linkedTo.add(resolved);
+          }
+        } catch { /* skip */ }
+      }
+
+      const orphans = allFiles.filter(f => !linkedTo.has(f)).slice(0, limit);
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(orphans, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_vault_wordcount',
+    'Get word counts for vault files',
+    {
+      file: z.string().optional().describe('Single file path (omit for vault-wide)'),
+      top: z.number().optional().describe('Return only top N files by word count'),
+    },
+    async ({ file, top }) => {
+      const countWords = (text: string): number => {
+        const body = text.replace(/^---[\s\S]*?---\n?/, '');
+        const words = body.match(/\S+/g);
+        return words ? words.length : 0;
+      };
+
+      if (file) {
+        if (!vault.fileExists(file)) {
+          return { content: [{ type: 'text' as const, text: `Error: File not found: ${file}` }], isError: true };
+        }
+        const count = countWords(vault.readFileRaw(file));
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ file, words: count }, null, 2) }] };
+      }
+
+      const mdFiles = await vault.listFiles('**/*.md');
+      const fileCounts: Array<{ file: string; words: number }> = [];
+      let totalWords = 0;
+
+      for (const f of mdFiles) {
+        try {
+          const count = countWords(vault.readFileRaw(f));
+          fileCounts.push({ file: f, words: count });
+          totalWords += count;
+        } catch { /* skip */ }
+      }
+
+      fileCounts.sort((a, b) => b.words - a.words);
+      const limited = top ? fileCounts.slice(0, top) : fileCounts;
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ totalWords, fileCount: fileCounts.length, files: limited }, null, 2) }],
       };
     },
   );

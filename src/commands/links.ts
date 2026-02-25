@@ -150,6 +150,170 @@ export function registerLinksCommands(program: Command): void {
     });
 
   links
+    .command('path <noteA> <noteB>')
+    .description('Find the shortest link path between two notes (BFS)')
+    .action(async (noteA: string, noteB: string) => {
+      const opts = program.opts();
+      const jsonMode = opts.json;
+
+      try {
+        const vaultPath = getVaultPath(opts.vault);
+        const v = new Vault(vaultPath);
+
+        if (!v.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+
+        const allFiles = await v.listFiles();
+
+        // Resolve noteA and noteB to actual file paths
+        const resolveNote = (input: string): string | null => {
+          if (allFiles.includes(input)) return input;
+          const withMd = input.endsWith('.md') ? input : input + '.md';
+          if (allFiles.includes(withMd)) return withMd;
+          return resolveWikilink(input.replace(/\.md$/, ''), allFiles);
+        };
+
+        const startFile = resolveNote(noteA);
+        const endFile = resolveNote(noteB);
+
+        if (!startFile) {
+          printError(`Note not found: ${noteA}`);
+          process.exit(1);
+        }
+        if (!endFile) {
+          printError(`Note not found: ${noteB}`);
+          process.exit(1);
+        }
+
+        // Build adjacency list from wikilinks
+        const adj = new Map<string, string[]>();
+        for (const file of allFiles) {
+          try {
+            const raw = v.readFileRaw(file);
+            const wikilinks = extractWikilinks(raw);
+            const neighbors: string[] = [];
+            for (const link of wikilinks) {
+              const resolved = resolveWikilink(link.target, allFiles);
+              if (resolved && resolved !== file) {
+                neighbors.push(resolved);
+              }
+            }
+            adj.set(file, neighbors);
+          } catch {
+            // skip unreadable files
+          }
+        }
+
+        // BFS shortest path
+        const queue: string[][] = [[startFile]];
+        const visited = new Set<string>([startFile]);
+
+        let foundPath: string[] | null = null;
+        while (queue.length > 0) {
+          const path = queue.shift()!;
+          const current = path[path.length - 1];
+
+          if (current === endFile) {
+            foundPath = path;
+            break;
+          }
+
+          const neighbors = adj.get(current) ?? [];
+          for (const neighbor of neighbors) {
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              queue.push([...path, neighbor]);
+            }
+          }
+        }
+
+        if (jsonMode) {
+          output({ from: startFile, to: endFile, path: foundPath, length: foundPath ? foundPath.length - 1 : null }, { json: true });
+          return;
+        }
+
+        if (!foundPath) {
+          console.log(`No link path found between "${startFile}" and "${endFile}".`);
+          return;
+        }
+
+        console.log(`Path (${foundPath.length - 1} hop${foundPath.length - 1 !== 1 ? 's' : ''}):\n`);
+        for (let i = 0; i < foundPath.length; i++) {
+          const prefix = i === 0 ? '  ' : '  → ';
+          console.log(`${prefix}${foundPath[i]}`);
+        }
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  links
+    .command('orphans')
+    .description('Find notes with zero incoming backlinks')
+    .option('--limit <n>', 'Limit number of results', parseInt)
+    .action(async (cmdOpts: { limit?: number }) => {
+      const opts = program.opts();
+      const jsonMode = opts.json;
+
+      try {
+        const vaultPath = getVaultPath(opts.vault);
+        const v = new Vault(vaultPath);
+
+        if (!v.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+
+        const allFiles = await v.listFiles();
+
+        // Build set of files that are linked to
+        const linkedTo = new Set<string>();
+        for (const file of allFiles) {
+          try {
+            const raw = v.readFileRaw(file);
+            const wikilinks = extractWikilinks(raw);
+            for (const link of wikilinks) {
+              const resolved = resolveWikilink(link.target, allFiles);
+              if (resolved) {
+                linkedTo.add(resolved);
+              }
+            }
+          } catch {
+            // skip unreadable files
+          }
+        }
+
+        // Orphans are files not in the linkedTo set
+        let orphans = allFiles.filter(f => !linkedTo.has(f));
+
+        if (cmdOpts.limit) {
+          orphans = orphans.slice(0, cmdOpts.limit);
+        }
+
+        if (jsonMode) {
+          output(orphans, { json: true });
+          return;
+        }
+
+        if (orphans.length === 0) {
+          console.log('No orphan notes found — every note has at least one backlink.');
+          return;
+        }
+
+        console.log(`Found ${orphans.length} orphan note(s):\n`);
+        for (const file of orphans) {
+          console.log(`  ${file}`);
+        }
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  links
     .command('broken')
     .description('Find all unresolved wikilinks across the vault')
     .option('--limit <n>', 'Limit number of results', parseInt)

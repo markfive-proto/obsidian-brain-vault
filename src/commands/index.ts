@@ -17,6 +17,7 @@ import { registerCanvasCommands } from './canvas.js';
 import { registerBasesCommands } from './bases.js';
 import { registerImportCommands } from './import.js';
 import { registerInitCommand } from './init.js';
+import { registerSkillsCommands } from './skills.js';
 
 export function registerAllCommands(program: Command): void {
   registerVaultCommands(program);
@@ -37,4 +38,5 @@ export function registerAllCommands(program: Command): void {
   registerBasesCommands(program);
   registerImportCommands(program);
   registerInitCommand(program);
+  registerSkillsCommands(program);
 }

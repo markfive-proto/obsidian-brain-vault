@@ -175,6 +175,86 @@ Examples:
     });
 
   vault
+    .command('wordcount')
+    .description('Word count across vault files')
+    .option('--file <path>', 'Count words in a single file')
+    .option('--top <n>', 'Show top N files by word count', parseInt)
+    .action(async (cmdOpts: { file?: string; top?: number }) => {
+      const opts = program.opts();
+      const jsonMode = opts.json;
+
+      try {
+        const vaultPath = getVaultPath(opts.vault);
+        const v = new Vault(vaultPath);
+
+        if (!v.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+
+        const countWords = (text: string): number => {
+          // Strip frontmatter
+          const body = text.replace(/^---[\s\S]*?---\n?/, '');
+          const words = body.match(/\S+/g);
+          return words ? words.length : 0;
+        };
+
+        if (cmdOpts.file) {
+          if (!v.fileExists(cmdOpts.file)) {
+            printError(`File not found: ${cmdOpts.file}`);
+            process.exit(1);
+          }
+          const raw = v.readFileRaw(cmdOpts.file);
+          const count = countWords(raw);
+          if (jsonMode) {
+            output({ file: cmdOpts.file, words: count }, { json: true });
+          } else {
+            console.log(`${cmdOpts.file}: ${count.toLocaleString()} words`);
+          }
+          return;
+        }
+
+        const mdFiles = await v.listFiles('**/*.md');
+        const fileCounts: Array<{ file: string; words: number }> = [];
+        let totalWords = 0;
+
+        for (const file of mdFiles) {
+          try {
+            const raw = v.readFileRaw(file);
+            const count = countWords(raw);
+            fileCounts.push({ file, words: count });
+            totalWords += count;
+          } catch {
+            // skip unreadable files
+          }
+        }
+
+        // Sort by word count descending
+        fileCounts.sort((a, b) => b.words - a.words);
+
+        const limited = cmdOpts.top ? fileCounts.slice(0, cmdOpts.top) : fileCounts;
+
+        if (jsonMode) {
+          output({ totalWords, fileCount: fileCounts.length, files: limited }, { json: true });
+        } else {
+          if (cmdOpts.top) {
+            console.log(`Top ${Math.min(cmdOpts.top, fileCounts.length)} files by word count:\n`);
+            printTable(
+              ['File', 'Words'],
+              limited.map(f => [f.file, f.words.toLocaleString()]),
+            );
+            console.log(`\nTotal: ${totalWords.toLocaleString()} words across ${fileCounts.length} files`);
+          } else {
+            console.log(`Total: ${totalWords.toLocaleString()} words across ${fileCounts.length} files`);
+          }
+        }
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  vault
     .command('config [key] [value]')
     .description('Get or set CLI configuration values')
     .action((key?: string, value?: string) => {
