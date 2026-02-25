@@ -4,7 +4,8 @@
   "description": "Community-built, open-source CLI for Obsidian vaults",
   "type": "module",
   "bin": {
-    "obs": "./dist/index.js"
+    "obs": "./dist/index.js",
+    "obs-mcp": "./dist/mcp/server.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,9 +14,30 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
-  "keywords": ["obsidian", "cli", "markdown", "vault", "notes"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markfive-proto/obsidian-vault-cli.git"
+  },
+  "homepage": "https://github.com/markfive-proto/obsidian-vault-cli",
+  "author": "markfive-proto",
+  "keywords": [
+    "obsidian",
+    "cli",
+    "markdown",
+    "vault",
+    "notes"
+  ],
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",

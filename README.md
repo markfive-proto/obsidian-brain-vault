@@ -48,12 +48,21 @@ Some operations need to talk to Obsidian's runtime and are outside the scope of 
 ## Installation
 
 ```bash
-# From source (recommended for now)
-git clone https://github.com/user/obsidian-vault-cli.git
-cd obsidian-vault-cli
-npm install && npm run build && npm link
+# npm (recommended)
+npm install -g obsidian-vault-cli
 
-# Verify
+# Homebrew (macOS/Linux)
+brew tap markfive-proto/tap
+brew install obsidian-vault-cli
+
+# From source
+git clone https://github.com/markfive-proto/obsidian-vault-cli.git
+cd obsidian-vault-cli && npm install && npm run build && npm link
+```
+
+Verify:
+
+```bash
 obs --version
 ```
 
@@ -307,6 +316,42 @@ obs tags all --json | jq '.[].tag'
 
 ---
 
+## MCP Server
+
+`obs` includes an MCP (Model Context Protocol) server so AI tools like Claude Desktop, Cursor, and Windsurf can use your vault as a tool provider.
+
+### Setup
+
+Add to your Claude Desktop config (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "obs": {
+      "command": "obs-mcp",
+      "args": ["--vault", "/path/to/your/vault"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `obs_vault_info` | Vault stats, plugins, configuration |
+| `obs_read_note` | Read a note (frontmatter + body) |
+| `obs_write_note` | Write content to an existing note |
+| `obs_create_note` | Create a new note |
+| `obs_search` | Search by content, path, or regex |
+| `obs_list_files` | List files matching a glob pattern |
+| `obs_manage_tags` | List/add/remove frontmatter tags |
+| `obs_manage_properties` | Read/set frontmatter properties |
+| `obs_daily_note` | Create or read daily notes |
+| `obs_list_links` | Outgoing links, backlinks, broken links |
+
+---
+
 ## Development
 
 ```bash
@@ -323,7 +368,7 @@ Contributions are welcome! Whether it's a bug fix, new command, or documentation
 
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/obsidian-vault-cli.git
+git clone https://github.com/markfive-proto/obsidian-vault-cli.git
 cd obsidian-vault-cli
 npm install
 
