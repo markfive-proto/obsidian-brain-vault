@@ -4,7 +4,7 @@ A community-built, open-source CLI for Obsidian vaults.
 
 > **Note:** This is an unofficial, community-created project. It is not affiliated with or endorsed by Obsidian.
 
-[![license](https://img.shields.io/npm/l/obsidian-vault-cli)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---
 
