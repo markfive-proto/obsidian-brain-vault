@@ -4,26 +4,21 @@
   <img src="./docs/images/hero-knowledge-tree.png" alt="A luminous knowledge tree growing from a terminal cursor — the obs knowledge base" width="85%" />
 </p>
 
-A Unix CLI for Obsidian vaults that implements Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time.
+The free, community-built implementation of Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time. Built to give AI agents persistent context that goes beyond a single chat session.
 
-Works as a plain CLI, as a Claude Code skill pack, and as an MCP server for Claude Desktop / Cursor / Windsurf.
+Unix CLI · Claude Code skill pack · MCP server for Claude Desktop, Cursor, Windsurf. Works with any markdown folder — Obsidian-compatible today, vendor-neutral by design.
 
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-
-> Unofficial, community-built. Not affiliated with or endorsed by Obsidian.
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![free](https://img.shields.io/badge/free-forever-22c55e)](LICENSE)
 
 ---
 
 ## The problem
 
-You have:
+Every AI chat starts from zero. You re-explain who you are, what you're building, what you already know. The session ends and your best thinking disappears.
 
-- 20 open browser tabs you meant to read.
-- A folder of PDFs you never opened.
-- 500 notes in Obsidian that never link to each other.
-- A chat with Claude yesterday that had your best thinking in it. You can't find it.
+Meanwhile you have 20 browser tabs you meant to read, a folder of PDFs you never opened, and 500 notes that never link to each other. RAG retrieves the same chunks forever — nothing accumulates. Note apps are graveyards you have to maintain yourself.
 
-Every AI chat starts from zero. Every note app is a graveyard. Every source you add is isolated from every source you added before.
+Your AI agents need **persistent, compounding context**. That's what `obs` gives them.
 
 ## What `obs` gives you
 
@@ -35,23 +30,19 @@ Every AI chat starts from zero. Every note app is a graveyard. Every source you 
 
 ## Why `obs`
 
-Most LLM-wiki tools are one of two shapes — and both leave something on the table.
+`obs` gives your AI agents a **compiled wiki** — a persistent, interlinked markdown artifact that compounds every time you add a source. Each agent session starts with your full context. Each answer you save makes the next answer better.
 
-**Obsidian plugins** give you polished UI but require the app running. No cron, no CI, no pipes, no headless servers. They live inside the app.
+- **Free and open-source.** MIT. No paid tier, no subscription, no lock-in.
+- **A Unix CLI.** Pipeable, scriptable, cron-able, CI-friendly. Runs headless on servers, in containers, from a shell script.
+- **100+ vault operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph — all from one tool.
+- **A built-in MCP server.** Plug into Claude Desktop, Cursor, Windsurf, Claude Code. Your agents query the wiki natively.
+- **A Claude Code skill pack.** Slash commands mirror every CLI command for conversational workflows.
+- **Vendor-neutral.** Works with any markdown folder. Obsidian-compatible today — if you ever outgrow Obsidian, the wiki goes with you.
 
-**Standalone CLIs** are scriptable and composable but lack Obsidian's vault primitives — tags, tasks, canvas, bases, graph — so they produce markdown that's technically compatible but functionally isolated.
-
-`obs` is both:
-
-- **A Unix CLI.** Pipeable, scriptable, cron-able, CI-friendly. Works headless. Works when Obsidian isn't running.
-- **100+ Obsidian-native operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph analysis — same files Obsidian sees.
-- **A built-in MCP server.** AI tools plug in directly.
-- **A Claude Code skill pack.** Slash commands mirror every CLI command.
-
-On the roadmap, three features nobody has shipped yet:
+On the roadmap, three features no one has shipped yet:
 
 - `obs kb verify` — fact-check every claim on a concept page against its cited sources; flag hallucinations with `[!unverified]` callouts
-- `obs kb eval` — self-test by generating held-out Q&A, measure the wiki's answer accuracy, track IQ over time
+- `obs kb eval` — self-test with held-out Q&A, measure the wiki's answer accuracy, track IQ over time
 - `obs kb autohunt` — overnight research loop that hunts sources for your open questions and hands you a morning digest
 
 ---
