@@ -1,5 +1,9 @@
 # `obs` — a knowledge base that writes itself
 
+<p align="center">
+  <img src="./docs/images/hero-knowledge-tree.png" alt="A luminous knowledge tree growing from a terminal cursor — the obs knowledge base" width="85%" />
+</p>
+
 A Unix CLI for Obsidian vaults that implements Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time.
 
 Works as a plain CLI, as a Claude Code skill pack, and as an MCP server for Claude Desktop / Cursor / Windsurf.
@@ -103,6 +107,10 @@ your-vault/
     ├── slides/
     └── lint/
 ```
+
+<p align="center">
+  <img src="./docs/images/karpathy-loop.png" alt="The Karpathy loop: RAW sources → COMPILED wiki → OUTPUTS, with outputs filing back into raw" width="90%" />
+</p>
 
 Open the vault in Obsidian — everything is plain markdown with `[[wikilinks]]`.
 
