@@ -1,14 +1,18 @@
-# `obs` — a knowledge base that writes itself
+# Brain Vault — a knowledge base that writes itself
 
 <p align="center">
-  <img src="./docs/images/hero-knowledge-tree.png" alt="A luminous knowledge tree growing from a terminal cursor — the obs knowledge base" width="85%" />
+  <img src="./docs/images/hero-knowledge-tree.png" alt="A luminous knowledge tree growing from a terminal cursor — the Brain Vault knowledge base" width="85%" />
+</p>
+
+<p align="center">
+  <code>obsidian-brain-vault</code> · CLI: <code>obs</code> · MCP: <code>obs-mcp</code>
 </p>
 
 The free, community-built implementation of Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time. Built to give AI agents persistent context that goes beyond a single chat session.
 
-Unix CLI · Claude Code skill pack · MCP server for Claude Desktop, Cursor, Windsurf. Works with any markdown folder — Obsidian-compatible today, vendor-neutral by design.
+**CLI + MCP-ready.** Claude Code skill pack. Works with Claude Desktop, Cursor, Windsurf. Any markdown folder — Obsidian-compatible today, vendor-neutral by design.
 
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![free](https://img.shields.io/badge/free-forever-22c55e)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![free](https://img.shields.io/badge/free-forever-22c55e)](LICENSE) [![cli + mcp](https://img.shields.io/badge/CLI%20%2B%20MCP-ready-06b6d4)](./README.md#connect-it-to-claude-desktop--cursor--windsurf-mcp)
 
 ---
 
@@ -53,7 +57,7 @@ On the roadmap, three features no one has shipped yet:
 
 ```bash
 # Requires Node 18+
-pnpm add -g obsidian-vault-cli          # or: npm i -g obsidian-vault-cli
+pnpm add -g obsidian-brain-vault          # or: npm i -g obsidian-brain-vault
 
 # Verify
 obs --version
@@ -115,8 +119,8 @@ Open the vault in Obsidian — everything is plain markdown with `[[wikilinks]]`
 
 ```bash
 # Clone and link if you haven't already
-git clone https://github.com/markfive-proto/obsidian-vault-cli.git
-cd obsidian-vault-cli && pnpm install && pnpm build && pnpm link --global
+git clone https://github.com/markfive-proto/obsidian-brain-vault.git
+cd obsidian-brain-vault && pnpm install && pnpm build && pnpm link --global
 
 # Install a pack globally (available in all Claude Code projects)
 obs skills install knowledge-base          # The Karpathy pack (ingest/compile/qa/lint/render)
@@ -347,8 +351,8 @@ obs kb list concepts --json | jq -r '.[]'
 ## Development
 
 ```bash
-git clone https://github.com/markfive-proto/obsidian-vault-cli.git
-cd obsidian-vault-cli
+git clone https://github.com/markfive-proto/obsidian-brain-vault.git
+cd obsidian-brain-vault
 pnpm install
 pnpm build             # production build
 pnpm dev               # watch mode
