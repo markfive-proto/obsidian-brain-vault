@@ -18,6 +18,7 @@ import { registerBasesCommands } from './bases.js';
 import { registerImportCommands } from './import.js';
 import { registerInitCommand } from './init.js';
 import { registerSkillsCommands } from './skills.js';
+import { registerKbCommands } from './kb.js';
 
 export function registerAllCommands(program: Command): void {
   registerVaultCommands(program);
@@ -39,4 +40,5 @@ export function registerAllCommands(program: Command): void {
   registerImportCommands(program);
   registerInitCommand(program);
   registerSkillsCommands(program);
+  registerKbCommands(program);
 }

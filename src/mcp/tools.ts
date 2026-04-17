@@ -1,10 +1,40 @@
 import { z } from 'zod';
 import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
+import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { Vault } from '../vault.js';
 import { extractWikilinks, extractMarkdownLinks, extractTasks, extractInlineTags, resolveWikilink } from '../utils/markdown.js';
 import { updateFrontmatter, parseFrontmatter } from '../utils/frontmatter.js';
 import matter from 'gray-matter';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+const KB_DIRS: Record<string, string[]> = {
+  raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets'],
+  compiled: ['concepts', 'people', 'orgs'],
+  outputs: ['answers', 'reports', 'briefs', 'slides', 'charts', 'graphs', 'handbooks', 'lint', 'eval', 'autohunt', 'verify'],
+};
+
+function countMd(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let n = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) n += countMd(full);
+    else if (entry.name.endsWith('.md')) n += 1;
+  }
+  return n;
+}
+
+function listMd(dir: string, root: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listMd(full, root));
+    else if (entry.name.endsWith('.md')) out.push(full.slice(root.length + 1));
+  }
+  return out;
+}
 
 export function registerTools(server: McpServer, vault: Vault): void {
   server.tool(
@@ -394,7 +424,7 @@ export function registerTools(server: McpServer, vault: Vault): void {
       }
 
       if (where && where.length > 0) {
-        const filters = where.map(w => {
+        const filters = where.map((w: string) => {
           const eqIdx = w.indexOf('=');
           if (eqIdx === -1) return null;
           return { key: w.slice(0, eqIdx), value: w.slice(eqIdx + 1) };
@@ -554,6 +584,136 @@ export function registerTools(server: McpServer, vault: Vault): void {
       return {
         content: [{ type: 'text' as const, text: JSON.stringify({ totalWords, fileCount: fileCounts.length, files: limited }, null, 2) }],
       };
+    },
+  );
+
+  registerKbTools(server, vault);
+}
+
+function registerKbTools(server: McpServer, vault: Vault): void {
+  server.tool(
+    'obs_kb_init',
+    'Scaffold a Karpathy-style knowledge base in the vault: raw/, compiled/, outputs/ with starter files.',
+    {},
+    async () => {
+      const root = vault.path;
+      const created: string[] = [];
+      for (const [top, subs] of Object.entries(KB_DIRS)) {
+        const topFull = join(root, top);
+        if (!existsSync(topFull)) { mkdirSync(topFull, { recursive: true }); created.push(top); }
+        for (const s of subs) {
+          const full = join(topFull, s);
+          if (!existsSync(full)) { mkdirSync(full, { recursive: true }); created.push(join(top, s)); }
+        }
+      }
+      const scaffolds: Array<[string, string]> = [
+        ['raw/INGEST-LOG.md', '# Ingest Log\n\nAppend-only log. One line per ingest.\n\n'],
+        ['compiled/00-INDEX.md', '---\ntitle: Knowledge Base Index\ntype: moc\ntags: [kb, index]\n---\n\n# Knowledge Base Index\n\nRun `obs kb compile` to populate.\n'],
+        ['compiled/COMPILE-LOG.md', '# Compile Log\n\nAppend-only. One line per run.\n\n'],
+      ];
+      for (const [rel, content] of scaffolds) {
+        const full = join(root, rel);
+        if (!existsSync(full)) { writeFileSync(full, content, 'utf-8'); created.push(rel); }
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ root, created }, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_kb_stats',
+    'Summary counts + health for the KB: raw sources, concept pages, dangling wikilinks.',
+    {},
+    async () => {
+      const root = vault.path;
+      const stats = {
+        raw: countMd(join(root, 'raw')),
+        concepts: countMd(join(root, 'compiled', 'concepts')),
+        people: countMd(join(root, 'compiled', 'people')),
+        orgs: countMd(join(root, 'compiled', 'orgs')),
+        outputs: countMd(join(root, 'outputs')),
+        scaffolded: existsSync(join(root, 'compiled', '00-INDEX.md')),
+      };
+
+      const allFiles = await vault.listFiles();
+      const basenames = new Set<string>();
+      for (const f of allFiles) {
+        const base = f.split('/').pop()?.replace(/\.md$/, '') ?? '';
+        if (base) basenames.add(base);
+      }
+      let dangling = 0;
+      let totalLinks = 0;
+      for (const f of allFiles) {
+        if (!f.startsWith('compiled/') && !f.startsWith('raw/')) continue;
+        try {
+          const body = vault.readFileRaw(f);
+          for (const link of extractWikilinks(body)) {
+            totalLinks += 1;
+            if (!basenames.has(link.target)) dangling += 1;
+          }
+        } catch { /* ignore */ }
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ ...stats, totalWikilinks: totalLinks, danglingWikilinks: dangling }, null, 2),
+        }],
+      };
+    },
+  );
+
+  server.tool(
+    'obs_kb_list_raw',
+    'List raw source files ingested into the KB.',
+    {},
+    async () => {
+      const files = listMd(join(vault.path, 'raw'), vault.path);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(files, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'obs_kb_list_concepts',
+    'List compiled concept pages.',
+    {},
+    async () => {
+      const files = listMd(join(vault.path, 'compiled', 'concepts'), vault.path);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(files, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'obs_kb_list_outputs',
+    'List generated outputs (answers, slides, charts, lint reports).',
+    {},
+    async () => {
+      const files = listMd(join(vault.path, 'outputs'), vault.path);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(files, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'obs_kb_append_ingest_log',
+    'Append a line to raw/INGEST-LOG.md. Used by ingest skills/tools after writing a raw file.',
+    {
+      type: z.enum(['article', 'paper', 'repo', 'transcript', 'image', 'dataset']),
+      path: z.string().describe('Relative path of the raw file just written'),
+      title: z.string().describe('Short title for the log line'),
+    },
+    async ({ type, path, title }) => {
+      const log = join(vault.path, 'raw', 'INGEST-LOG.md');
+      if (!existsSync(log)) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: ${log} does not exist. Run obs_kb_init first.` }],
+          isError: true,
+        };
+      }
+      const line = `- ${new Date().toISOString().replace('T', ' ').slice(0, 19)}  ${type}  ${path}  "${title.replace(/"/g, '\\"')}"\n`;
+      const current = require('node:fs').readFileSync(log, 'utf-8');
+      writeFileSync(log, current + line, 'utf-8');
+      return { content: [{ type: 'text' as const, text: `Appended: ${line.trim()}` }] };
     },
   );
 }

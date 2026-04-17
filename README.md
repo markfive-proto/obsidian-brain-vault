@@ -1,27 +1,87 @@
-# `obs` — Cognitive Toolkit for Obsidian
+# `obs` — Karpathy-method Knowledge Base, as a Unix tool
 
-A community-built CLI that turns your Obsidian vault into a thinking partner.
+A community-built CLI for Obsidian vaults. Implements Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — raw sources in, compiled wiki out, answers compound over time — as a composable command-line tool instead of an app-bound plugin.
 
-> **Note:** This is an unofficial, community-created project. It is not affiliated with or endorsed by Obsidian.
+> **Note:** Unofficial, community-built. Not affiliated with or endorsed by Obsidian.
 
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---
 
-## What is this?
+## Why another KB tool?
 
-`obs` is a command-line tool that lets you manage your Obsidian vault from the terminal — and with its **cognitive skill packs**, it turns Claude Code into a thinking partner that works with your vault.
+Every existing LLM-Wiki implementation is either an Obsidian plugin (requires the app running, no CI/cron/pipes) **or** a standalone CLI (no rich vault ops). `obs` is both — scriptable CLI, 100+ Obsidian-native primitives, built-in MCP server, and a companion skill pack for Claude Code.
 
+|  | `obs` | [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) | [obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain) | [llm-wiki-compiler](https://github.com/atomicmemory/llm-wiki-compiler) | [OpenKB](https://github.com/VectifyAI/OpenKB) |
+|---|---|---|---|---|---|
+| CLI (pipeable, cron-able, CI-friendly) | ✓ | — | — | ✓ | ✓ |
+| No Obsidian app required at runtime | ✓ | — | partial | ✓ | ✓ |
+| Obsidian-native ops (tags, tasks, canvas, bases, graph) | **100+** | limited | limited | — | — |
+| Built-in MCP server | ✓ | — | — | ✓ | — |
+| Claude Code skill pack included | ✓ | ✓ | ✓ | — | — |
+| Long-PDF support (tree-index) | roadmap | — | — | — | ✓ |
+| Fact-check / verify claims against sources | **roadmap (phase 3)** | — | — | — | — |
+| Self-eval loop (measure wiki IQ over time) | **roadmap (phase 3)** | — | — | — | — |
+| Scheduled overnight research (autohunt) | **roadmap (phase 3)** | `/autoresearch` (manual) | partial | — | — |
+
+**Three things nobody else ships**: fact-check (`obs kb verify`), self-eval (`obs kb eval`), scheduled autohunt (`obs kb autohunt`). These are on the phase-3 roadmap and are the defensible uniques this project is building toward.
+
+---
+
+## Knowledge Base quickstart (the Karpathy loop)
+
+```bash
+# One-time: register your vault
+obs init
+
+# Scaffold raw/ compiled/ outputs/
+obs kb init
+
+# Add sources (phase 1 shells out to the Claude Code ingest skill; phase 2 will be native)
+obs kb ingest https://karpathy.ai/...
+obs kb ingest paper.pdf
+obs kb ingest https://github.com/org/repo
+
+# Compile raw/ into a concept wiki
+obs kb compile
+
+# Ask — answer is saved back to outputs/answers/ so explorations compound
+obs kb ask "what does my KB say about LLM wikis?"
+
+# Health check
+obs kb lint
+
+# See the shape
+obs kb stats
+```
+
+Layout produced in your vault:
+
+```
+raw/        source material you ingested (immutable)
+compiled/   LLM-written concept pages + MOC index
+outputs/    answers, slides, charts, lint reports — still markdown, still in vault
+```
+
+The 5 knowledge-base skills (`ingest`, `compile`, `qa`, `lint`, `render`) live in [`skills/`](./skills/) and power the `obs kb` commands. See [`skills/KNOWLEDGE-BASE-PACK.md`](./skills/KNOWLEDGE-BASE-PACK.md) for the full skill-pack reference.
+
+---
+
+## What is this (the full picture)?
+
+`obs` is a command-line tool that lets you manage your Obsidian vault from the terminal — and with its skill packs, it turns Claude Code into a thinking partner that works with your vault.
+
+- **Knowledge base (NEW)**: `obs kb` — Karpathy-method ingest / compile / ask / lint / verify / eval / autohunt
+- **Cognitive skill packs**: capture, clarify, connect, reflect, act, review
 - **Smart queries**: date-range filtering, frontmatter filters, graph traversal, orphan detection, word counts
-- **6 cognitive skill packs**: capture, clarify, connect, reflect, act, review
 - **100+ commands** for files, search, tags, links, tasks, daily notes, and more
 - **JSON output** for scripting and automation
-- **MCP server** for AI tool integration (Claude Desktop, Cursor, Windsurf)
+- **MCP server** for AI tool integration (Claude Desktop, Cursor, Windsurf) — now with KB tools
 - **Works alongside** [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for AI agent workflows
 
 ### The deeper insight
 
-Many Obsidian users have rich vaults full of ideas but struggle to articulate, connect, or act on their own thinking. `obs` bridges that gap — it's a cognitive prosthetic that helps you find answers already in your vault.
+Many Obsidian users have rich vaults full of ideas but struggle to articulate, connect, or act on their own thinking. `obs` bridges that gap — it's a cognitive prosthetic that helps you find answers already in your vault, and a Karpathy-style compiler that makes that vault richer every time you add a source.
 
 ---
 
@@ -54,8 +114,8 @@ Some operations need to talk to Obsidian's runtime and are outside the scope of 
 ## Installation
 
 ```bash
-# npm (recommended)
-npm install -g obsidian-vault-cli
+# pnpm
+pnpm add -g obsidian-vault-cli
 
 # Homebrew (macOS/Linux)
 brew tap markfive-proto/tap
@@ -63,7 +123,7 @@ brew install obsidian-vault-cli
 
 # From source
 git clone https://github.com/markfive-proto/obsidian-vault-cli.git
-cd obsidian-vault-cli && npm install && npm run build && npm link
+cd obsidian-vault-cli && pnpm install && pnpm build && pnpm link
 ```
 
 Verify:
@@ -407,9 +467,9 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ## Development
 
 ```bash
-npm run dev      # watch mode
-npm test         # run tests
-npm run build    # production build
+pnpm dev      # watch mode
+pnpm test         # run tests
+pnpm build    # production build
 ```
 
 ---
@@ -422,11 +482,11 @@ Contributions are welcome! Whether it's a bug fix, new command, or documentation
 # Fork and clone
 git clone https://github.com/markfive-proto/obsidian-vault-cli.git
 cd obsidian-vault-cli
-npm install
+pnpm install
 
 # Make your changes
-npm run build
-npm test
+pnpm build
+pnpm test
 
 # Submit a PR
 ```
