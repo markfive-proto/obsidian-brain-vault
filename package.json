@@ -44,7 +44,8 @@
     "commander": "^12.1.0",
     "date-fns": "^3.6.0",
     "fast-glob": "^3.3.2",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
