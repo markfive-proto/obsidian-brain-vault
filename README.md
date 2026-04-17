@@ -29,21 +29,26 @@ Every AI chat starts from zero. Every note app is a graveyard. Every source you 
 - **100+ Obsidian-native operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph analysis — same vault Obsidian sees.
 - **Two personalities in one tool.** `obs kb ingest` as a command. `/clip <url>` as a Claude Code slash command. Same underlying logic.
 
-## How it compares
+## Why `obs`
 
-|  | `obs` | [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) | [obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain) | [llm-wiki-compiler](https://github.com/atomicmemory/llm-wiki-compiler) | [OpenKB](https://github.com/VectifyAI/OpenKB) |
-|---|---|---|---|---|---|
-| Unix CLI (pipes, cron, CI) | ✓ | — | — | ✓ | ✓ |
-| Works with Obsidian app closed | ✓ | — | partial | ✓ | ✓ |
-| Obsidian-native primitives | **100+** | limited | limited | — | — |
-| MCP server | ✓ | — | — | ✓ | — |
-| Claude Code skill pack | ✓ | ✓ | ✓ | — | — |
-| Long-PDF tree-index | roadmap | — | — | — | ✓ |
-| Fact-check against sources | **roadmap P3** | — | — | — | — |
-| Self-eval (wiki IQ over time) | **roadmap P3** | — | — | — | — |
-| Scheduled overnight research | **roadmap P3** | `/autoresearch` (manual) | partial | — | — |
+Most LLM-wiki tools are one of two shapes — and both leave something on the table.
 
-Honest tradeoffs: claude-obsidian has better GUI polish and a beautiful install flow. OpenKB has stronger long-PDF support today. `obs` wins on being a real CLI with deep Obsidian ops, plus three unique features on the roadmap nobody else is building.
+**Obsidian plugins** give you polished UI but require the app running. No cron, no CI, no pipes, no headless servers. They live inside the app.
+
+**Standalone CLIs** are scriptable and composable but lack Obsidian's vault primitives — tags, tasks, canvas, bases, graph — so they produce markdown that's technically compatible but functionally isolated.
+
+`obs` is both:
+
+- **A Unix CLI.** Pipeable, scriptable, cron-able, CI-friendly. Works headless. Works when Obsidian isn't running.
+- **100+ Obsidian-native operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph analysis — same files Obsidian sees.
+- **A built-in MCP server.** AI tools plug in directly.
+- **A Claude Code skill pack.** Slash commands mirror every CLI command.
+
+On the roadmap, three features nobody has shipped yet:
+
+- `obs kb verify` — fact-check every claim on a concept page against its cited sources; flag hallucinations with `[!unverified]` callouts
+- `obs kb eval` — self-test by generating held-out Q&A, measure the wiki's answer accuracy, track IQ over time
+- `obs kb autohunt` — overnight research loop that hunts sources for your open questions and hands you a morning digest
 
 ---
 
@@ -397,7 +402,6 @@ If `obs` helps you, a star goes a long way — it's how others discover the proj
 - [Obsidian](https://obsidian.md) for the markdown-vault format that makes all of this possible.
 - [Model Context Protocol](https://modelcontextprotocol.io) for the integration surface.
 - [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for pioneering agent-on-vault workflows.
-- The five sibling projects we learned from: [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), [obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain), [llm-wiki-compiler](https://github.com/atomicmemory/llm-wiki-compiler), [OpenKB](https://github.com/VectifyAI/OpenKB), [andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills).
 
 ---
 
