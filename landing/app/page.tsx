@@ -52,6 +52,12 @@ export default function HomePage() {
             Star on GitHub →
           </a>
           <a
+            href="/vaults"
+            className="rounded-lg border border-[color:var(--accent)] px-5 py-3 text-sm font-semibold text-[color:var(--accent)] transition hover:bg-[color:var(--accent)] hover:text-[color:var(--background)]"
+          >
+            Open your vaults →
+          </a>
+          <a
             href="#quickstart"
             className="rounded-lg border border-[color:var(--border)] px-5 py-3 text-sm font-semibold text-[color:var(--foreground)] transition hover:border-[color:var(--accent)]"
           >
