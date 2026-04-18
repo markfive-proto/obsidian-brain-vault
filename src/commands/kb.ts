@@ -11,6 +11,8 @@ import { ingestPaper } from '../kb/ingest-paper.js';
 import { ingestRepo } from '../kb/ingest-repo.js';
 import { ingestTranscript } from '../kb/ingest-transcript.js';
 import { spiderAvailable, type FetcherKind } from '../kb/fetcher.js';
+import { compileKb } from '../kb/compile.js';
+import { resolveLLMConfig, type LLMProvider } from '../kb/llm.js';
 
 const KB_DIRS = {
   raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets'],
@@ -439,10 +441,71 @@ provider SDK directly and expose all ops as MCP tools.
   kb
     .command('compile')
     .description('Incremental raw → compiled wiki (LLM)')
-    .option('--full', 'Re-read everything, ignoring incremental hashes', false)
-    .option('--since <duration>', 'Only files changed since (e.g. 7d, 24h)')
-    .action(() => {
-      printStub('/compile', 'Compiling raw/ into compiled/...');
+    .option('--full', 'Re-read every raw source (ignore incremental cursor)', false)
+    .option('--since <iso-date>', 'Only raw sources ingested after this timestamp')
+    .option('--dry-run', 'Print what would change without writing files', false)
+    .option('--provider <p>', 'LLM provider: anthropic | openai | google (env OBS_LLM_PROVIDER overrides)')
+    .option('--model <m>', 'Model id override (env OBS_LLM_MODEL overrides)')
+    .action(async (opts: {
+      full: boolean;
+      since?: string;
+      dryRun: boolean;
+      provider?: string;
+      model?: string;
+    }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({
+          provider: opts.provider as LLMProvider | undefined,
+          model: opts.model,
+        });
+
+        if (!jsonMode) {
+          console.log(chalk.dim(`Compile: ${config.provider}/${config.model}${opts.full ? ' (full)' : ''}${opts.dryRun ? ' (dry-run)' : ''}`));
+        }
+
+        const report = await compileKb(vaultPath, {
+          full: opts.full,
+          since: opts.since,
+          dryRun: opts.dryRun,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.log(chalk.dim(msg)),
+        });
+
+        if (jsonMode) {
+          output(JSON.stringify(report, null, 2), jsonMode);
+          return;
+        }
+
+        console.log();
+        console.log(chalk.green(`Compile complete`));
+        console.log(`  Raw sources read:    ${report.rawRead}`);
+        console.log(`  Concepts touched:    ${report.conceptsTouched}`);
+        console.log(`  New concept pages:   ${report.conceptsNew}`);
+        if (report.skipped.length) {
+          console.log(chalk.yellow(`  Skipped:             ${report.skipped.length}`));
+          for (const s of report.skipped.slice(0, 5)) {
+            console.log(chalk.dim(`    - ${s.path}: ${s.reason}`));
+          }
+        }
+        if (report.pagesWritten.length && report.pagesWritten.length <= 15) {
+          console.log();
+          console.log(chalk.dim('Pages written/updated:'));
+          for (const p of report.pagesWritten) console.log(`  ${p}`);
+        }
+        console.log();
+        console.log(chalk.dim('Next: obs kb ask "your question"'));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
