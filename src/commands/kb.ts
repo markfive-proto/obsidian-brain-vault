@@ -7,6 +7,9 @@ import { getVaultPath } from '../config.js';
 import { output, printError } from '../utils/output.js';
 import { extractWikilinks } from '../utils/markdown.js';
 import { detectSourceType, ingestArticle, type IngestSourceType } from '../kb/ingest.js';
+import { ingestPaper } from '../kb/ingest-paper.js';
+import { ingestRepo } from '../kb/ingest-repo.js';
+import { ingestTranscript } from '../kb/ingest-transcript.js';
 import { spiderAvailable, type FetcherKind } from '../kb/fetcher.js';
 
 const KB_DIRS = {
@@ -361,6 +364,24 @@ provider SDK directly and expose all ops as MCP tools.
           process.exit(1);
         }
 
+        const renderResult = (res: { path: string; title: string; wordCount: number; duplicate?: boolean; fetchedVia?: string }) => {
+          if (jsonMode) {
+            output(JSON.stringify(res, null, 2), jsonMode);
+            return;
+          }
+          if (res.duplicate) {
+            console.log(chalk.yellow(`Already ingested: ${res.path}`));
+            console.log(chalk.dim('(Use --overwrite to replace.)'));
+          } else {
+            console.log(chalk.green(`Ingested: ${res.path}`));
+            console.log(`  Title:       ${res.title}`);
+            console.log(`  Word count:  ${res.wordCount.toLocaleString()}`);
+            if (res.fetchedVia) console.log(chalk.dim(`  Fetched via: ${res.fetchedVia}`));
+          }
+          console.log();
+          console.log(chalk.dim('Next: obs kb compile'));
+        };
+
         if (sourceType === 'article') {
           const resolvedFetcher =
             fetcherKind === 'auto' ? (spiderAvailable() ? 'spider' : 'defuddle') : fetcherKind;
@@ -372,30 +393,32 @@ provider SDK directly and expose all ops as MCP tools.
             overwrite: opts.overwrite,
             fetcher: fetcherKind,
           });
-
-          if (jsonMode) {
-            output(JSON.stringify(result, null, 2), jsonMode);
-            return;
-          }
-
-          if (result.duplicate) {
-            console.log(chalk.yellow(`Already ingested: ${result.path}`));
-            console.log(chalk.dim('(Use --overwrite to replace.)'));
-          } else {
-            console.log(chalk.green(`Ingested: ${result.path}`));
-            console.log(`  Title:       ${result.title}`);
-            console.log(`  Word count:  ${result.wordCount.toLocaleString()}`);
-            if (result.fetchedVia) {
-              console.log(chalk.dim(`  Fetched via: ${result.fetchedVia}`));
-            }
-          }
-          console.log();
-          console.log(chalk.dim('Next: obs kb compile'));
+          renderResult(result);
           return;
         }
 
-        // Non-article types still delegated to the Claude Code skills (phase 2
-        // continuation work). Give the user the exact slash command to run.
+        if (sourceType === 'paper') {
+          if (!jsonMode) console.log(chalk.dim(`Ingesting paper (pdftotext + arXiv metadata when available): ${source}`));
+          const result = await ingestPaper(vaultPath, source, { overwrite: opts.overwrite });
+          renderResult(result);
+          return;
+        }
+
+        if (sourceType === 'repo') {
+          if (!jsonMode) console.log(chalk.dim(`Ingesting repo via gh api: ${source}`));
+          const result = await ingestRepo(vaultPath, source, { overwrite: opts.overwrite });
+          renderResult(result);
+          return;
+        }
+
+        if (sourceType === 'transcript') {
+          if (!jsonMode) console.log(chalk.dim(`Ingesting transcript via yt-dlp auto-captions: ${source}`));
+          const result = await ingestTranscript(vaultPath, source, { overwrite: opts.overwrite });
+          renderResult(result);
+          return;
+        }
+
+        // Remaining types (image, dataset) still route to the skill pack.
         const skillMap: Record<IngestSourceType, string> = {
           article: '/clip',
           paper: '/paper',
@@ -406,7 +429,7 @@ provider SDK directly and expose all ops as MCP tools.
         };
         printStub(`${skillMap[sourceType]} ${source}`, `Ingesting ${sourceType} (${source})...`);
         console.log();
-        console.log(chalk.dim(`Native ${sourceType} ingest lands in phase 2.2. Article/URL ingest is live now.`));
+        console.log(chalk.dim(`Native ${sourceType} ingest lands in a future phase. Article / paper / repo / transcript are live.`));
       } catch (err) {
         printError((err as Error).message);
         process.exit(1);

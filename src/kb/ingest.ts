@@ -92,9 +92,9 @@ export function runDefuddle(source: string): Promise<DefuddleDoc> {
 /**
  * Build YAML frontmatter from a flat object. Values that are strings are
  * quoted only if they contain special characters. Arrays are rendered as
- * bracket-lists.
+ * bracket-lists. Exported so sibling ingest modules share one formatter.
  */
-function yamlFrontmatter(data: Record<string, unknown>): string {
+export function yamlFrontmatter(data: Record<string, unknown>): string {
   const lines = ['---'];
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined || value === null) continue;
