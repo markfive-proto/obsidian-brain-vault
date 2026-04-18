@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-vault-cli",
+  "name": "obsidian-brain-vault",
   "version": "0.1.0",
-  "description": "Community-built, open-source CLI for Obsidian vaults",
+  "description": "Brain Vault — the free, community-built Karpathy LLM-Wiki for Obsidian. CLI + MCP-ready, Claude Code skill pack included.",
   "type": "module",
   "bin": {
     "obs": "./dist/index.js",
@@ -16,14 +16,15 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/markfive-proto/obsidian-vault-cli.git"
+    "url": "https://github.com/markfive-proto/obsidian-brain-vault.git"
   },
-  "homepage": "https://github.com/markfive-proto/obsidian-vault-cli",
+  "homepage": "https://github.com/markfive-proto/obsidian-brain-vault",
   "author": "markfive-proto",
   "keywords": [
     "obsidian",
@@ -43,7 +44,8 @@
     "commander": "^12.1.0",
     "date-fns": "^3.6.0",
     "fast-glob": "^3.3.2",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

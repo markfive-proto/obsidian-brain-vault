@@ -2,10 +2,32 @@ import { Command } from 'commander';
 import { dirname, join, basename } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
 import { Vault } from '../vault.js';
 import { getVaultPath } from '../config.js';
 import { output, printTable, printError, printSuccess, formatBytes } from '../utils/output.js';
 import { parseFrontmatter, serializeFrontmatter } from '../utils/frontmatter.js';
+
+/**
+ * Parse a duration string like "7d", "2w", "1m", "1y" into a Date.
+ * Returns a Date representing (now - duration).
+ */
+function parseSinceDuration(since: string): Date {
+  const match = since.match(/^(\d+)([dwmy])$/i);
+  if (!match) {
+    throw new Error(`Invalid duration format: "${since}". Use format like 7d, 2w, 1m, 1y`);
+  }
+  const amount = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  const now = new Date();
+  switch (unit) {
+    case 'd': return subDays(now, amount);
+    case 'w': return subWeeks(now, amount);
+    case 'm': return subMonths(now, amount);
+    case 'y': return subYears(now, amount);
+    default: throw new Error(`Unknown duration unit: ${unit}`);
+  }
+}
 
 export function registerFilesCommands(program: Command): void {
   const files = program
@@ -23,6 +45,9 @@ Examples:
     .command('list')
     .description('List files in the vault')
     .option('--folder <path>', 'Filter by folder path')
+    .option('--since <duration>', 'Filter files modified within duration (e.g., 7d, 2w, 1m, 1y)')
+    .option('--before <date>', 'Filter files modified before date (YYYY-MM-DD)')
+    .option('--where <filter>', 'Filter by frontmatter key=value (repeatable)', (val: string, prev: string[]) => [...prev, val], [] as string[])
     .option('--sort <field>', 'Sort by: name, modified, size', 'name')
     .option('--limit <n>', 'Limit number of results')
     .action(async (cmdOpts) => {
@@ -39,6 +64,61 @@ Examples:
         if (cmdOpts.folder) {
           const folder = cmdOpts.folder.replace(/\/$/, '');
           fileList = fileList.filter(f => f.startsWith(folder + '/') || f === folder);
+        }
+
+        // Filter by date range (--since)
+        if (cmdOpts.since) {
+          const sinceDate = parseSinceDuration(cmdOpts.since);
+          fileList = fileList.filter(f => {
+            try {
+              return v.fileStat(f).mtime >= sinceDate;
+            } catch {
+              return false;
+            }
+          });
+        }
+
+        // Filter by date range (--before)
+        if (cmdOpts.before) {
+          const beforeDate = new Date(cmdOpts.before + 'T23:59:59');
+          if (isNaN(beforeDate.getTime())) {
+            printError(`Invalid date format: "${cmdOpts.before}". Use YYYY-MM-DD`);
+            process.exit(1);
+          }
+          fileList = fileList.filter(f => {
+            try {
+              return v.fileStat(f).mtime <= beforeDate;
+            } catch {
+              return false;
+            }
+          });
+        }
+
+        // Filter by frontmatter (--where key=value)
+        if (cmdOpts.where && cmdOpts.where.length > 0) {
+          const filters = cmdOpts.where.map((w: string) => {
+            const eqIdx = w.indexOf('=');
+            if (eqIdx === -1) {
+              printError(`Invalid filter format: "${w}". Use key=value`);
+              process.exit(1);
+            }
+            return { key: w.slice(0, eqIdx), value: w.slice(eqIdx + 1) };
+          });
+
+          fileList = fileList.filter(f => {
+            if (!f.endsWith('.md')) return false;
+            try {
+              const parsed = v.readFile(f);
+              return filters.every(({ key, value }: { key: string; value: string }) => {
+                const fmVal = parsed.frontmatter[key];
+                if (fmVal === undefined || fmVal === null) return false;
+                if (Array.isArray(fmVal)) return fmVal.map(String).includes(value);
+                return String(fmVal) === value;
+              });
+            } catch {
+              return false;
+            }
+          });
         }
 
         // Sort

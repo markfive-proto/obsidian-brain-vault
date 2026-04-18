@@ -1,388 +1,413 @@
-# `obs` — Open Vault CLI
+# Brain Vault — a knowledge base that writes itself
 
-A community-built, open-source CLI for Obsidian vaults.
+<p align="center">
+  <img src="./docs/images/hero-knowledge-tree.png" alt="A luminous knowledge tree growing from a terminal cursor — the Brain Vault knowledge base" width="85%" />
+</p>
 
-> **Note:** This is an unofficial, community-created project. It is not affiliated with or endorsed by Obsidian.
+<p align="center">
+  <code>obsidian-brain-vault</code> · CLI: <code>obs</code> · MCP: <code>obs-mcp</code>
+</p>
 
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+The free, community-built implementation of Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time. Built to give AI agents persistent context that goes beyond a single chat session.
 
----
+**CLI + MCP-ready.** Claude Code skill pack. Works with Claude Desktop, Cursor, Windsurf. Any markdown folder — Obsidian-compatible today, vendor-neutral by design.
 
-## What is this?
-
-`obs` is a command-line tool that lets you manage your Obsidian vault from the terminal. It works by reading and writing vault files directly on disk — no running Obsidian instance needed.
-
-- **100+ commands** for files, search, tags, links, tasks, daily notes, and more
-- **JSON output** for scripting and automation
-- **Auto-detects** your vaults on setup
-- **Works alongside** [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for AI agent workflows
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![free](https://img.shields.io/badge/free-forever-22c55e)](LICENSE) [![cli + mcp](https://img.shields.io/badge/CLI%20%2B%20MCP-ready-06b6d4)](./README.md#connect-it-to-claude-desktop--cursor--windsurf-mcp)
 
 ---
 
-## How it works
+## The problem
 
-`obs` reads and writes the same files Obsidian uses — markdown notes, `.canvas` files, `.base` files, and `.obsidian/` configuration. Since it operates on files directly, it handles everything that doesn't require Obsidian's app runtime:
+Every AI chat starts from zero. You re-explain who you are, what you're building, what you already know. The session ends and your best thinking disappears.
 
-### What `obs` does
+Meanwhile you have 20 browser tabs you meant to read, a folder of PDFs you never opened, and 500 notes that never link to each other. RAG retrieves the same chunks forever — nothing accumulates. Note apps are graveyards you have to maintain yourself.
 
-- Read, create, search, and manage notes
-- Manage frontmatter properties, tags, links, tasks
-- Daily notes, templates, bookmarks
-- Canvas and Bases files
-- Plugin/theme management
-- Git sync
-- Full JSON output for scripting
+Your AI agents need **persistent, compounding context**. That's what `obs` gives them.
 
-### What requires the Obsidian app
+## What `obs` gives you
 
-Some operations need to talk to Obsidian's runtime and are outside the scope of a file-based CLI:
+- **A wiki that compounds.** Drop a URL, PDF, repo, transcript, or image. The LLM extracts concepts, cross-references everything you already have, and files it. Source #50 doesn't sit alone — it links to ~10 existing pages and updates them.
+- **Answers that stick.** Ask a question. The answer is saved as a new note with wikilinks. Next question uses it as context.
+- **A Unix tool, not a plugin.** Pipeable, scriptable, cron-able, CI-friendly. Works when Obsidian isn't running. Works headless on a server.
+- **100+ Obsidian-native operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph analysis — same vault Obsidian sees.
+- **Two personalities in one tool.** `obs kb ingest` as a command. `/clip <url>` as a Claude Code slash command. Same underlying logic.
 
-- Executing JS inside Obsidian (`eval`)
-- Capturing app screenshots
-- Inspecting the Obsidian UI (DOM/CSS)
-- Hot-reloading plugins
-- Real-time sync via Obsidian Sync
+## Why `obs`
+
+`obs` gives your AI agents a **compiled wiki** — a persistent, interlinked markdown artifact that compounds every time you add a source. Each agent session starts with your full context. Each answer you save makes the next answer better.
+
+- **Free and open-source.** MIT. No paid tier, no subscription, no lock-in.
+- **A Unix CLI.** Pipeable, scriptable, cron-able, CI-friendly. Runs headless on servers, in containers, from a shell script.
+- **100+ vault operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph — all from one tool.
+- **A built-in MCP server.** Plug into Claude Desktop, Cursor, Windsurf, Claude Code. Your agents query the wiki natively.
+- **A Claude Code skill pack.** Slash commands mirror every CLI command for conversational workflows.
+- **Vendor-neutral.** Works with any markdown folder. Obsidian-compatible today — if you ever outgrow Obsidian, the wiki goes with you.
+
+On the roadmap, three features no one has shipped yet:
+
+- `obs kb verify` — fact-check every claim on a concept page against its cited sources; flag hallucinations with `[!unverified]` callouts
+- `obs kb eval` — self-test with held-out Q&A, measure the wiki's answer accuracy, track IQ over time
+- `obs kb autohunt` — overnight research loop that hunts sources for your open questions and hands you a morning digest
 
 ---
 
-## Installation
+## 2-minute quickstart
+
+### 1. Install
 
 ```bash
-# npm (recommended)
-npm install -g obsidian-vault-cli
+# Requires Node 18+
+pnpm add -g obsidian-brain-vault          # or: npm i -g obsidian-brain-vault
 
-# Homebrew (macOS/Linux)
-brew tap markfive-proto/tap
-brew install obsidian-vault-cli
-
-# From source
-git clone https://github.com/markfive-proto/obsidian-vault-cli.git
-cd obsidian-vault-cli && npm install && npm run build && npm link
-```
-
-Verify:
-
-```bash
+# Verify
 obs --version
 ```
 
----
-
-## Quick Start
+### 2. Point `obs` at your vault
 
 ```bash
-# Auto-detect and configure your vault
-obs init
-
-# Or set manually
+obs init                                 # Auto-detects Obsidian vaults
+# or
 obs vault config defaultVault /path/to/vault
-
-# Start using
-obs vault info
-obs files list --limit 10
-obs search content "product strategy"
-obs tags all
 ```
+
+### 3. Start the loop
+
+```bash
+obs kb init                              # Scaffold raw/ compiled/ outputs/
+
+obs kb ingest https://karpathy.ai/...    # Add a source
+obs kb compile                           # Fold it into the wiki
+obs kb ask "what does my KB say about X?" # Query — answer saved to outputs/
+
+obs kb stats                             # See the shape of your KB
+```
+
+You now have a vault structured like this:
+
+```
+your-vault/
+├── raw/              sources you ingested (immutable)
+│   ├── articles/
+│   ├── papers/
+│   ├── repos/
+│   └── INGEST-LOG.md
+├── compiled/         LLM-written wiki
+│   ├── 00-INDEX.md
+│   ├── concepts/     cross-referenced concept pages
+│   ├── people/
+│   └── orgs/
+└── outputs/          answers, slides, charts, lint reports
+    ├── answers/
+    ├── slides/
+    └── lint/
+```
+
+<p align="center">
+  <img src="./docs/images/karpathy-loop.png" alt="The Karpathy loop: RAW sources → COMPILED wiki → OUTPUTS, with outputs filing back into raw" width="90%" />
+</p>
+
+Open the vault in Obsidian — everything is plain markdown with `[[wikilinks]]`.
 
 ---
 
-## Command Reference
+## Use it with Claude Code
 
-### `init` — Auto-detect vault
+`obs` ships with a Claude Code skill pack. Every `obs kb` CLI command has a slash-command twin you can invoke in Claude Code conversations.
 
-```bash
-obs init                                        # Detect vaults and set default
-```
-
-### `vault` — Vault information and configuration
+### Install the skill pack
 
 ```bash
-obs vault info                                  # Show vault name, path, file count, plugins
-obs vault stats                                 # File counts, sizes, extension breakdown, top tags
-obs vault config                                # Print all CLI config
-obs vault config defaultVault                   # Print the default vault path
-obs vault config defaultVault /path/to/vault    # Set the default vault
+# Clone and link if you haven't already
+git clone https://github.com/markfive-proto/obsidian-brain-vault.git
+cd obsidian-brain-vault && pnpm install && pnpm build && pnpm link --global
+
+# Install a pack globally (available in all Claude Code projects)
+obs skills install knowledge-base          # The Karpathy pack (ingest/compile/qa/lint/render)
+obs skills install capture                 # Brain-dump + quick-capture cognitive pack
+
+# Or install to the current project only
+obs skills install knowledge-base --local
 ```
 
-### `files` — File operations
+### Available slash commands
 
-```bash
-obs files list                                  # List all files
-obs files list --folder Notes --sort modified --limit 20
-obs files read path/to/note.md                  # Print file content
-obs files read path/to/note.md --head 10        # First 10 lines
-obs files write path/to/note.md --content "New content"
-obs files create path/to/new-note.md            # Create a new file
-obs files create path/to/note.md --template Meeting
-obs files delete path/to/note.md                # Delete (with confirmation)
-obs files delete path/to/note.md --force        # Delete without confirmation
-obs files move old/path.md new/path.md          # Move or rename
-obs files rename path/to/note.md new-name.md
-obs files total                                 # Count of markdown files
-```
+Once installed, in any Claude Code session:
 
-### `search` — Search vault content
+| You type | Claude does |
+|---|---|
+| `/clip <url>` | Fetches the page, cleans it to markdown, files it in `raw/articles/` |
+| `/paper <arxiv-or-pdf>` | Extracts text + figures from a PDF into `raw/papers/` |
+| `/repo <github-url>` | Fetches README + key files into `raw/repos/` |
+| `/transcript <youtube-url>` | Pulls auto-captions into `raw/transcripts/` |
+| `/compile` | Scans raw/ for new sources, generates/updates concept pages |
+| `/ask <question>` | Queries the wiki, saves the answer to `outputs/answers/` |
+| `/deep <topic>` | Multi-step research dive across the wiki |
+| `/lint` | Finds broken links, orphans, missing frontmatter, gaps |
+| `/slides <topic>` | Renders a Marp slide deck |
+| `/brief <topic>` | Renders a 1-page executive brief |
+| `/chart <dataset>` | Renders a matplotlib chart |
 
-```bash
-obs search content "search term"                # Full-text search across all markdown
-obs search content "TODO" --case-sensitive --limit 10
-obs search path "meeting"                       # Find files by name (glob matching)
-obs search path "**/*.canvas"                   # Glob pattern search
-obs search regex "TODO|FIXME"                   # Regex search
-obs search regex "\d{4}-\d{2}-\d{2}" --flags gi
-```
-
-### `tags` — Manage and query tags
-
-```bash
-obs tags list path/to/note.md                   # Show tags from a file's frontmatter
-obs tags add path/to/note.md project            # Add a tag to frontmatter
-obs tags remove path/to/note.md project         # Remove a tag from frontmatter
-obs tags all                                    # Scan entire vault for tag counts
-obs tags all --sort name                        # Sort alphabetically
-obs tags all --min-count 5                      # Only tags appearing 5+ times
-```
-
-### `daily` — Daily notes
-
-```bash
-obs daily create                                # Create today's daily note
-obs daily create --date 2025-01-15              # Create for a specific date
-obs daily create --template "Daily Template"
-obs daily open                                  # Print today's daily note
-obs daily open --date 2025-01-15                # Print a specific day's note
-obs daily list                                  # List recent daily notes
-obs daily list --limit 30 --days 7              # Last 7 days, up to 30 results
-```
-
-### `properties` — Read and write frontmatter
-
-```bash
-obs properties read path/to/note.md             # Show all frontmatter properties
-obs properties read path/to/note.md title       # Read a specific property
-obs properties set path/to/note.md status draft
-obs properties set path/to/note.md tags "a,b,c" # Comma-separated -> array
-obs properties update path/to/note.md priority 1 # Alias for set
-```
-
-### `templates` — Template management
-
-```bash
-obs templates list                              # List available templates
-obs templates apply "Meeting" Notes/standup.md  # Apply template to a file
-obs templates create "Weekly Review"            # Create a new template
-obs templates create "Bug Report" --content "## Bug\n\n## Steps"
-```
-
-### `tasks` — Find and manage tasks
-
-```bash
-obs tasks all                                   # List all tasks across the vault
-obs tasks pending                               # Only unchecked tasks
-obs tasks done                                  # Only completed tasks
-obs tasks pending --file path/to/note.md        # Tasks in a specific file
-obs tasks add path/to/note.md "Buy groceries"   # Append a new task
-obs tasks toggle path/to/note.md 15             # Toggle checkbox at line 15
-obs tasks remove path/to/note.md 15             # Remove task at line 15
-```
-
-### `bookmarks` — Manage vault bookmarks
-
-```bash
-obs bookmarks list                              # List all bookmarks
-obs bookmarks add path/to/note.md               # Add a bookmark
-obs bookmarks remove path/to/note.md            # Remove a bookmark
-```
-
-### `links` — Analyze links between notes
-
-```bash
-obs links list path/to/note.md                  # Show outgoing links
-obs links outgoing path/to/note.md              # Alias for list
-obs links backlinks path/to/note.md             # Find all files linking to this note
-obs links broken                                # Find all unresolved wikilinks
-obs links broken --limit 20
-```
-
-### `plugins` — Manage vault plugins
-
-```bash
-obs plugins list                                # List all plugins with status
-obs plugins list --enabled                      # Only enabled plugins
-obs plugins list --disabled                     # Only disabled plugins
-obs plugins versions                            # Show community plugin versions
-obs plugins enable dataview                     # Enable a community plugin
-obs plugins disable dataview                    # Disable a community plugin
-```
-
-### `dev` — Developer tools
-
-```bash
-obs dev eval "vault.listFiles()"                # Evaluate JS with vault in scope
-obs dev script ./my-script.js                   # Run a JS file with vault context
-```
-
-### `sync` — Git sync operations
-
-```bash
-obs sync status                                 # Show git status of the vault
-obs sync push                                   # Stage, commit, and push
-obs sync push --message "Updated notes"         # Custom commit message
-obs sync pull                                   # Pull latest changes
-```
-
-### `themes` — Manage vault themes
-
-```bash
-obs themes list                                 # List installed themes
-obs themes apply "Minimal"                      # Apply a theme
-```
-
-### `canvas` — Manage canvas files
-
-```bash
-obs canvas list                                 # List all canvas files
-obs canvas read path/to/canvas.canvas           # Summarize a canvas
-obs canvas create path/to/new.canvas            # Create a new canvas
-obs canvas create path/to/new.canvas --text "Hello"  # With initial text node
-obs canvas nodes path/to/canvas.canvas          # List all nodes
-```
-
-### `bases` — Manage base files
-
-```bash
-obs bases list                                  # List all base files
-obs bases read path/to/base.base                # Read a base file
-obs bases create path/to/new.base               # Create a new base
-obs bases create path/to/new.base --source Notes
-```
-
-### `import` — Import content into the vault
-
-```bash
-obs import url https://example.com/article      # Import a URL as markdown
-obs import url https://example.com --name "My Article"
-```
+The CLI (`obs kb ingest`, `obs kb compile`, etc.) and the slash commands share the same underlying skills. Use whichever fits your workflow — pipes in the terminal, conversational in Claude Code.
 
 ---
 
-## Global Options
+## Connect it to Claude Desktop / Cursor / Windsurf (MCP)
 
-Every command supports these flags:
+`obs` includes a built-in [MCP](https://modelcontextprotocol.io) server (`obs-mcp`) so any AI tool that speaks MCP can use your vault as a tool.
 
-| Flag | Description |
-|------|-------------|
-| `--vault <path>` | Path to the Obsidian vault (overrides `defaultVault` config) |
-| `--json` | Output as JSON for scripting and piping |
-| `--help` | Show help for any command |
-| `--version` | Print the CLI version |
+### Claude Desktop
 
----
+1. Open your Claude Desktop config:
 
-## JSON Mode & Scripting
+   ```bash
+   # macOS
+   open ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
-All commands support `--json` for machine-readable output. Pipe to `jq` for filtering:
+   # Windows
+   notepad %APPDATA%\Claude\claude_desktop_config.json
+   ```
 
-```bash
-# Get vault file count as a number
-obs vault stats --json | jq '.fileCount'
+2. Add the `obs` server:
 
-# Get all pending tasks and format as CSV
-obs tasks pending --json | jq -r '.[] | [.file, .line, .text] | @csv'
+   ```json
+   {
+     "mcpServers": {
+       "obs": {
+         "command": "obs-mcp",
+         "args": ["--vault", "/absolute/path/to/your/vault"]
+       }
+     }
+   }
+   ```
 
-# Find the top 5 tags
-obs tags all --json | jq '.[0:5]'
+3. Restart Claude Desktop. You'll see an 🔨 icon in the input bar — click it to confirm `obs_*` tools are listed.
 
-# Search and extract just file paths from results
-obs search content "TODO" --json | jq '[.[].file] | unique'
-```
+### Cursor
 
----
-
-## Using with obsidian-skills
-
-[obsidian-skills](https://github.com/kepano/obsidian-skills) is an official collection of instruction files that teach AI agents how to work with Obsidian files. `obs` pairs well with it — the skills teach agents the correct file formats, and `obs` gives them (and you) a fast way to query and modify the vault from the terminal.
-
-```bash
-# Install obsidian-skills for AI agent support
-cd /path/to/vault
-git clone https://github.com/kepano/obsidian-skills .claude/
-
-# Use obs for terminal operations
-obs search content "meeting notes"
-obs daily create
-obs tags all --json | jq '.[].tag'
-```
-
----
-
-## MCP Server
-
-`obs` includes an MCP (Model Context Protocol) server so AI tools like Claude Desktop, Cursor, and Windsurf can use your vault as a tool provider.
-
-### Setup
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
+Add to `~/.cursor/mcp.json` (or **Settings → MCP → Add Server**):
 
 ```json
 {
   "mcpServers": {
     "obs": {
       "command": "obs-mcp",
-      "args": ["--vault", "/path/to/your/vault"]
+      "args": ["--vault", "/absolute/path/to/your/vault"]
     }
   }
 }
 ```
 
-### Available MCP Tools
+### Windsurf
 
-| Tool | Description |
-|------|-------------|
-| `obs_vault_info` | Vault stats, plugins, configuration |
-| `obs_read_note` | Read a note (frontmatter + body) |
-| `obs_write_note` | Write content to an existing note |
-| `obs_create_note` | Create a new note |
-| `obs_search` | Search by content, path, or regex |
-| `obs_list_files` | List files matching a glob pattern |
-| `obs_manage_tags` | List/add/remove frontmatter tags |
-| `obs_manage_properties` | Read/set frontmatter properties |
-| `obs_daily_note` | Create or read daily notes |
-| `obs_list_links` | Outgoing links, backlinks, broken links |
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "obs": {
+      "command": "obs-mcp",
+      "args": ["--vault", "/absolute/path/to/your/vault"]
+    }
+  }
+}
+```
+
+### Claude Code (CLI)
+
+```bash
+claude mcp add obs obs-mcp --vault /absolute/path/to/your/vault
+# Then in any Claude Code session:
+claude
+> /mcp              # confirms obs is connected
+> list my concept pages
+```
+
+### What the AI can now do
+
+21 MCP tools are registered (15 vault ops + 6 KB ops):
+
+**Vault ops:** `obs_vault_info`, `obs_read_note`, `obs_write_note`, `obs_create_note`, `obs_search`, `obs_list_files`, `obs_manage_tags`, `obs_manage_properties`, `obs_daily_note`, `obs_list_links`, `obs_list_files_filtered`, `obs_links_path`, `obs_links_orphans`, `obs_vault_wordcount`
+
+**KB ops (new):** `obs_kb_init`, `obs_kb_stats`, `obs_kb_list_raw`, `obs_kb_list_concepts`, `obs_kb_list_outputs`, `obs_kb_append_ingest_log`
+
+Ask any of the above AI tools: *"Show me my KB stats and list 5 concept pages."* It will call the MCP tools, no prompting needed.
+
+---
+
+## Commands cheatsheet
+
+The KB loop:
+
+```bash
+obs kb init                              # Scaffold raw/ compiled/ outputs/
+obs kb ingest <url|file>                 # Add a source
+obs kb compile                           # raw/ → compiled/ concept pages
+obs kb ask "question"                    # Query, save answer
+obs kb lint                              # Broken links / orphans / gaps
+obs kb stats                             # Health summary
+obs kb list raw|concepts|outputs         # Browse
+```
+
+The roadmap uniques:
+
+```bash
+obs kb verify <concept>                  # Fact-check against sources  [phase 3]
+obs kb eval                              # Self-test wiki IQ           [phase 3]
+obs kb autohunt                          # Overnight research daemon   [phase 3]
+obs kb publish <concept> --format blog   # Blog / tweet / newsletter   [phase 3]
+obs kb watch                             # Auto-recompile on raw/ change [phase 2]
+```
+
+Everyday vault ops:
+
+```bash
+obs vault info                           # Vault name, stats, plugins
+obs files list --since 7d                # Files modified in last 7 days
+obs search content "TODO"                # Full-text search
+obs tags all --sort count                # Tag frequency
+obs links broken                         # Dead wikilinks
+obs links orphans                        # Unlinked notes
+obs daily create                         # Today's daily note
+obs tasks pending --json | jq            # All unchecked tasks
+```
+
+Every command supports `--json` for scripting and `--help` for details. See [`docs/commands.md`](./docs/commands.md) or run `obs --help` for the full reference.
+
+---
+
+## Cognitive skill packs
+
+Beyond the knowledge-base pack, `obs` ships six cognitive skill packs that turn Claude Code into a thinking partner:
+
+| Pack | Slash commands | What it does |
+|---|---|---|
+| **capture** | `/dump`, `/capture`, `/quick` | Brain dumps, rapid-fire capture |
+| **clarify** | `/articulate`, `/expand`, `/simplify` | Rewrite messy notes, distill to core |
+| **connect** | `/connect`, `/trace`, `/drift` | Find hidden connections, track evolution |
+| **reflect** | `/emerge`, `/challenge`, `/growth` | Cluster ideas, challenge assumptions |
+| **act** | `/next`, `/decide`, `/graduate` | Priorities, decisions, promote ideas |
+| **review** | `/today`, `/closeday`, `/weekly` | Daily and weekly rituals |
+| **knowledge-base** (new) | `/clip`, `/paper`, `/compile`, `/ask`, `/lint`, `/slides`, `/brief`, ... | Karpathy LLM-Wiki workflow |
+
+```bash
+obs skills list                           # Browse all packs
+obs skills info knowledge-base            # See a pack's commands
+obs skills install knowledge-base         # Install globally
+obs skills install knowledge-base --local # Install to current project
+```
+
+---
+
+## Roadmap
+
+**Phase 1 — shipped:**
+- `obs kb init / stats / list` (native)
+- `obs kb ingest / compile / ask / lint / render / verify / eval / autohunt` (stubs that delegate to the Claude Code skills; full logic in the skills today)
+- 6 new MCP tools for the KB loop
+- Claude Code skill pack (ingest, compile, qa, lint, render)
+
+**Phase 2 — next:**
+- Native LLM-backed `ingest / compile / ask / lint` via LiteLLM or Anthropic SDK
+- SHA-256 change detection for incremental compile
+- markitdown / pdftotext ingest for PDF, docx, pptx
+- `obs kb watch` daemon
+- MCP tools for all LLM-backed ops
+
+**Phase 3 — the uniques:**
+- `obs kb verify <concept>` — fact-check each claim on a concept page against its cited sources; annotate hallucinations with `[!unverified]` callouts
+- `obs kb eval` — generate held-out Q&A from sources, measure the wiki's answer accuracy, write a weekly IQ trend
+- `obs kb autohunt` — overnight research loop that collects open questions from concept pages, hunts for sources, recompiles, writes a morning digest
+- `obs kb publish` — render a concept or answer as a blog draft, tweet thread, newsletter, or LinkedIn post
+
+These three are the defensible wedge; nobody in the LLM-Wiki space has shipped them.
+
+---
+
+## JSON mode & scripting
+
+All commands support `--json`:
+
+```bash
+obs vault stats --json | jq '.fileCount'
+obs tasks pending --json | jq -r '.[] | [.file, .line, .text] | @csv'
+obs kb stats --json | jq '.danglingWikilinks'
+obs kb list concepts --json | jq -r '.[]'
+```
+
+---
+
+## Global options
+
+| Flag | Description |
+|---|---|
+| `--vault <path>` | Override the configured vault |
+| `--json` | Machine-readable output |
+| `--help` | Help for any command |
+| `--version` | Print CLI version |
 
 ---
 
 ## Development
 
 ```bash
-npm run dev      # watch mode
-npm test         # run tests
-npm run build    # production build
+git clone https://github.com/markfive-proto/obsidian-brain-vault.git
+cd obsidian-brain-vault
+pnpm install
+pnpm build             # production build
+pnpm dev               # watch mode
+pnpm test              # vitest (67 tests currently)
+pnpm link --global     # expose `obs` and `obs-mcp` binaries
+```
+
+Code layout:
+
+```
+src/
+├── index.ts           CLI entrypoint (commander)
+├── commands/          one file per command group (kb, files, search, tags, ...)
+├── mcp/               MCP server + tool registration
+├── utils/             frontmatter, markdown, output helpers
+└── vault.ts           Vault class — direct file I/O, safe path resolution
+
+skills/                Claude Code skill packs (one folder per skill)
+├── knowledge-base/    (via the 5 subfolders: ingest, compile, qa, lint, render)
+├── capture/ clarify/ connect/ reflect/ act/ review/
+└── obs/               CLI reference skill
 ```
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Whether it's a bug fix, new command, or documentation improvement — all PRs are appreciated.
+PRs welcome — especially:
+
+- Phase 2 native implementations (look at `src/commands/kb.ts` — the stubs mark their intent with `printStub(...)`)
+- Phase 3 features (`verify`, `eval`, `autohunt`)
+- More ingest formats (epub, mhtml, rss)
+- More render formats (Mermaid diagrams, flash-card exports, pandoc variants)
+- New skill packs
 
 ```bash
-# Fork and clone
-git clone https://github.com/markfive-proto/obsidian-vault-cli.git
-cd obsidian-vault-cli
-npm install
-
-# Make your changes
-npm run build
-npm test
-
-# Submit a PR
+# Fork, clone, branch
+pnpm install
+pnpm build && pnpm test
+# Submit PR against main
 ```
 
-If you find `obs` useful, consider giving it a star — it helps others discover the project.
+If `obs` helps you, a star goes a long way — it's how others discover the project.
+
+---
+
+## Acknowledgments
+
+- [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) for describing the LLM Wiki pattern.
+- [Obsidian](https://obsidian.md) for the markdown-vault format that makes all of this possible.
+- [Model Context Protocol](https://modelcontextprotocol.io) for the integration surface.
+- [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for pioneering agent-on-vault workflows.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).

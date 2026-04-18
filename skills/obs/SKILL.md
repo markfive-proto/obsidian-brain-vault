@@ -41,6 +41,9 @@ obs vault info                        # Name, path, file count, plugins
 obs vault stats                       # Sizes, extensions, top tags
 obs vault config                      # Print all config
 obs vault config defaultVault /path   # Set default vault
+obs vault wordcount                   # Total word count
+obs vault wordcount --top 10          # Top files by words
+obs vault wordcount --file note.md    # Single file count
 ```
 
 ### files — File operations
@@ -48,6 +51,10 @@ obs vault config defaultVault /path   # Set default vault
 ```bash
 obs files list                        # List all files
 obs files list --folder Notes --sort modified --limit 20
+obs files list --since 7d --sort modified  # Last 7 days
+obs files list --since 2w --before 2025-01-01
+obs files list --where status=draft   # Filter by frontmatter
+obs files list --where status=draft --where type=idea
 obs files read path/to/note.md        # Print file content
 obs files read path/to/note.md --head 10
 obs files write path/to/note.md --content "New content"
@@ -136,6 +143,9 @@ obs bookmarks remove path/to/note.md
 obs links list path/to/note.md       # Outgoing links
 obs links outgoing path/to/note.md
 obs links backlinks path/to/note.md  # Incoming links
+obs links path "noteA.md" "noteB.md" # Shortest path between notes
+obs links orphans                    # Notes with zero backlinks
+obs links orphans --limit 20
 obs links broken                     # Unresolved wikilinks
 obs links broken --limit 20
 ```
