@@ -6,6 +6,7 @@ import { Vault } from '../vault.js';
 import { getVaultPath } from '../config.js';
 import { output, printError } from '../utils/output.js';
 import { extractWikilinks } from '../utils/markdown.js';
+import { detectSourceType, ingestArticle, type IngestSourceType } from '../kb/ingest.js';
 
 const KB_DIRS = {
   raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets'],
@@ -338,10 +339,60 @@ provider SDK directly and expose all ops as MCP tools.
 
   kb
     .command('ingest <source>')
-    .description('Ingest a URL, file, or repo into raw/ (LLM)')
+    .description('Ingest a URL, file, or repo into raw/')
     .option('--type <t>', 'Force type: article|paper|repo|transcript|image|dataset')
-    .action((source: string) => {
-      printStub(`/clip ${source}`, `Ingesting ${source} into raw/...`);
+    .option('--overwrite', 'Overwrite an existing file with the same slug', false)
+    .action(async (source: string, opts: { type?: string; overwrite: boolean }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+
+        const sourceType = (opts.type as IngestSourceType | undefined) ?? detectSourceType(source);
+        const jsonMode = program.opts().json;
+
+        if (sourceType === 'article') {
+          if (!jsonMode) console.log(chalk.dim(`Ingesting article via defuddle: ${source}`));
+          const result = await ingestArticle(vaultPath, source, { overwrite: opts.overwrite });
+
+          if (jsonMode) {
+            output(JSON.stringify(result, null, 2), jsonMode);
+            return;
+          }
+
+          if (result.duplicate) {
+            console.log(chalk.yellow(`Already ingested: ${result.path}`));
+            console.log(chalk.dim('(Use --overwrite to replace.)'));
+          } else {
+            console.log(chalk.green(`Ingested: ${result.path}`));
+            console.log(`  Title:      ${result.title}`);
+            console.log(`  Word count: ${result.wordCount.toLocaleString()}`);
+          }
+          console.log();
+          console.log(chalk.dim('Next: obs kb compile'));
+          return;
+        }
+
+        // Non-article types still delegated to the Claude Code skills (phase 2
+        // continuation work). Give the user the exact slash command to run.
+        const skillMap: Record<IngestSourceType, string> = {
+          article: '/clip',
+          paper: '/paper',
+          repo: '/repo',
+          transcript: '/transcript',
+          image: '/image',
+          dataset: '/dataset',
+        };
+        printStub(`${skillMap[sourceType]} ${source}`, `Ingesting ${sourceType} (${source})...`);
+        console.log();
+        console.log(chalk.dim(`Native ${sourceType} ingest lands in phase 2.2. Article/URL ingest is live now.`));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
