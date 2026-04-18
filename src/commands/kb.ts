@@ -12,6 +12,7 @@ import { ingestRepo } from '../kb/ingest-repo.js';
 import { ingestTranscript } from '../kb/ingest-transcript.js';
 import { spiderAvailable, type FetcherKind } from '../kb/fetcher.js';
 import { compileKb } from '../kb/compile.js';
+import { askKb } from '../kb/ask.js';
 import { resolveLLMConfig, type LLMProvider } from '../kb/llm.js';
 
 const KB_DIRS = {
@@ -511,9 +512,60 @@ provider SDK directly and expose all ops as MCP tools.
   kb
     .command('ask <question>')
     .description('Query the wiki; saves answer to outputs/answers/ (LLM)')
-    .option('--deep', 'Multi-step research (calls /deep instead of /ask)')
-    .action((question: string) => {
-      printStub(`/ask ${JSON.stringify(question)}`, 'Querying compiled wiki...');
+    .option('--include-raw', 'Also include raw/ sources in the context (deeper, more tokens)', false)
+    .option('--budget <bytes>', 'Max bytes of wiki context to send to the model', '280000')
+    .option('--no-backlinks', 'Do not append a backlink from cited concept pages')
+    .option('--provider <p>', 'LLM provider: anthropic | openai | google')
+    .option('--model <m>', 'Model id override')
+    .action(async (
+      question: string,
+      opts: { includeRaw: boolean; budget: string; backlinks: boolean; provider?: string; model?: string },
+    ) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({
+          provider: opts.provider as LLMProvider | undefined,
+          model: opts.model,
+        });
+
+        if (!jsonMode) {
+          console.log(chalk.dim(`Asking ${config.provider}/${config.model}: ${JSON.stringify(question)}`));
+        }
+
+        const result = await askKb(vaultPath, question, {
+          includeRaw: opts.includeRaw,
+          budgetBytes: parseInt(opts.budget, 10) || 280_000,
+          addBacklinks: opts.backlinks,
+          config,
+        });
+
+        if (jsonMode) {
+          output(JSON.stringify(result, null, 2), jsonMode);
+          return;
+        }
+
+        console.log();
+        console.log(chalk.green(result.answer.restatedQuestion));
+        console.log();
+        console.log(chalk.bold('TL;DR'));
+        for (const b of result.answer.tldrBullets) console.log(`  • ${b}`);
+        console.log();
+        console.log(chalk.bold('Confidence:'), result.answer.confidence);
+        console.log(chalk.dim(result.answer.confidenceReason));
+        console.log();
+        console.log(chalk.dim(`Consulted ${result.sourcesConsidered} wiki item(s), ${result.contextBytes.toLocaleString()} bytes of context.`));
+        console.log();
+        console.log(chalk.green(`Full answer saved to ${result.answerPath}`));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
