@@ -13,6 +13,10 @@ import { ingestTranscript } from '../kb/ingest-transcript.js';
 import { spiderAvailable, type FetcherKind } from '../kb/fetcher.js';
 import { compileKb } from '../kb/compile.js';
 import { askKb } from '../kb/ask.js';
+import { verifyKb } from '../kb/verify.js';
+import { evalKb } from '../kb/eval.js';
+import { autohuntKb } from '../kb/autohunt.js';
+import { lintKb } from '../kb/lint.js';
 import { resolveLLMConfig, type LLMProvider } from '../kb/llm.js';
 
 const KB_DIRS = {
@@ -571,44 +575,190 @@ provider SDK directly and expose all ops as MCP tools.
   kb
     .command('lint')
     .description('Health check; saves report to outputs/lint/')
-    .option('--fix', 'Apply safe auto-fixes', false)
-    .action(() => {
-      printStub('/lint', 'Linting KB...');
+    .option('--fix', 'Apply safe auto-fixes (frontmatter backfill, tag canon, trailing ws)', false)
+    .option('--suggest', 'Run LLM next-to-write suggestions', false)
+    .option('--stale-days <n>', 'Pages older than N days count as stale', '90')
+    .option('--provider <p>', 'LLM provider (only if --suggest)')
+    .option('--model <m>', 'Model id override')
+    .action(async (opts: { fix: boolean; suggest: boolean; staleDays: string; provider?: string; model?: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = opts.suggest
+          ? resolveLLMConfig({ provider: opts.provider as LLMProvider | undefined, model: opts.model })
+          : undefined;
+        const report = await lintKb(vaultPath, {
+          fix: opts.fix,
+          suggest: opts.suggest,
+          staleDays: parseInt(opts.staleDays, 10) || 90,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(JSON.stringify(report, null, 2), jsonMode);
+          return;
+        }
+        console.log();
+        console.log(chalk.green('Lint complete'));
+        console.log(`  Scanned:             ${report.scannedFiles}`);
+        console.log(`  Errors:              ${chalk.red(String(report.errors))}`);
+        console.log(`  Warnings:            ${chalk.yellow(String(report.warnings))}`);
+        console.log(`  Info:                ${report.infos}`);
+        if (report.fixesApplied.length) console.log(`  Fixes applied:       ${chalk.cyan(String(report.fixesApplied.length))}`);
+        console.log();
+        console.log(chalk.dim(`Report: ${report.reportPath}`));
+        if (report.errors > 0) process.exit(1);
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
-    .command('verify <concept>')
-    .description('Fact-check a concept page against its sources (LLM) [phase 3]')
-    .action((concept: string) => {
-      printStub(`/verify ${concept}`, `Verifying ${concept}...`);
-      console.log();
-      console.log(chalk.dim('Planned: re-read cited sources, score each claim'));
-      console.log(chalk.dim('(supported / partial / unsupported), annotate page'));
-      console.log(chalk.dim('with [!unverified] callouts where hallucinations found.'));
+    .command('verify')
+    .description('Fact-check concept pages against their cited sources (LLM)')
+    .option('--concept <slug>', 'Single concept (slug, filename, or absolute path)')
+    .option('--all', 'Verify every concept page', false)
+    .option('--no-annotate', 'Do not write callouts into the concept page')
+    .option('--provider <p>', 'LLM provider')
+    .option('--model <m>', 'Model id override')
+    .action(async (opts: { concept?: string; all: boolean; annotate: boolean; provider?: string; model?: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        if (!opts.concept && !opts.all) {
+          printError('Pass --concept <slug> or --all.');
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({ provider: opts.provider as LLMProvider | undefined, model: opts.model });
+        const report = await verifyKb(vaultPath, {
+          concept: opts.concept,
+          all: opts.all,
+          annotate: opts.annotate,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(JSON.stringify(report, null, 2), jsonMode);
+          return;
+        }
+        console.log();
+        console.log(chalk.green('Verify complete'));
+        console.log(`  Concepts scanned:    ${report.conceptsScanned}`);
+        console.log(`  Claims checked:      ${report.claimsChecked}`);
+        console.log(`  Supported:           ${chalk.green(String(report.supported))}`);
+        console.log(`  Partial:             ${chalk.yellow(String(report.partial))}`);
+        console.log(`  Unsupported:         ${chalk.red(String(report.unsupported))}`);
+        console.log(`  Missing source:      ${report.missingSource}`);
+        console.log();
+        if (report.reportPaths.length <= 5) for (const p of report.reportPaths) console.log(chalk.dim(`  Report: ${p}`));
+        else console.log(chalk.dim(`  ${report.reportPaths.length} reports written to outputs/verify/`));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
     .command('eval')
-    .description('Self-test — generate held-out Q&A, measure wiki IQ (LLM) [phase 3]')
-    .option('--samples <n>', 'Number of held-out questions', '25')
-    .action(() => {
-      printStub('/eval', 'Running self-eval...');
-      console.log();
-      console.log(chalk.dim('Planned: extract claims from sources, hold out N,'));
-      console.log(chalk.dim('generate questions, ask the wiki, score accuracy,'));
-      console.log(chalk.dim('log trend to outputs/eval/.'));
+    .description('Self-test — generate held-out Q&A, measure wiki IQ over time (LLM)')
+    .option('--samples <n>', 'Number of questions to generate', '20')
+    .option('--seed <n>', 'Seed for reproducible source sampling', '1')
+    .option('--provider <p>', 'LLM provider')
+    .option('--model <m>', 'Model id override')
+    .option('--fail-under <n>', 'Exit non-zero if IQ score is below this threshold (0-1)')
+    .action(async (opts: { samples: string; seed: string; provider?: string; model?: string; failUnder?: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({ provider: opts.provider as LLMProvider | undefined, model: opts.model });
+        const report = await evalKb(vaultPath, {
+          samples: parseInt(opts.samples, 10) || 20,
+          seed: parseInt(opts.seed, 10) || 1,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(JSON.stringify(report, null, 2), jsonMode);
+          return;
+        }
+        console.log();
+        console.log(chalk.green('Eval complete'));
+        console.log(`  Samples:             ${report.samples}`);
+        console.log(`  IQ score:            ${chalk.cyan((report.iqScore * 100).toFixed(1) + '%')} (${report.correct}/${report.samples})`);
+        console.log(`  Citation precision:  ${(report.citationPrecision * 100).toFixed(1)}%`);
+        console.log(`  Citation recall:     ${(report.citationRecall * 100).toFixed(1)}%`);
+        console.log();
+        console.log(chalk.dim(`Report: ${report.reportPath}`));
+        console.log(chalk.dim(`Trend:  ${report.trendPath}`));
+        const failUnder = opts.failUnder ? parseFloat(opts.failUnder) : undefined;
+        if (failUnder !== undefined && report.iqScore < failUnder) {
+          console.log(chalk.red(`\nIQ ${report.iqScore.toFixed(2)} below threshold ${failUnder}`));
+          process.exit(1);
+        }
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
     .command('autohunt')
-    .description('Overnight research loop for open questions (LLM) [phase 3]')
-    .option('--max-sources <n>', 'Max sources to fetch this run', '10')
-    .action(() => {
-      printStub('/autohunt', 'Starting autohunt...');
-      console.log();
-      console.log(chalk.dim('Planned: collect `## Open questions` across compiled/,'));
-      console.log(chalk.dim('run autoresearch, ingest discovered sources,'));
-      console.log(chalk.dim('recompile, write morning digest to outputs/autohunt/.'));
+    .description('Overnight research loop: hunt sources for open questions, compile (LLM + web)')
+    .option('--max-questions <n>', 'Max open questions to chase this run', '3')
+    .option('--max-sources <n>', 'Max candidate URLs to ingest per question', '3')
+    .option('--skip-compile', 'Skip the final compile step', false)
+    .option('--provider <p>', 'LLM provider')
+    .option('--model <m>', 'Model id override')
+    .action(async (opts: { maxQuestions: string; maxSources: string; skipCompile: boolean; provider?: string; model?: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({ provider: opts.provider as LLMProvider | undefined, model: opts.model });
+        const report = await autohuntKb(vaultPath, {
+          maxQuestions: parseInt(opts.maxQuestions, 10) || 3,
+          maxSourcesPerQuestion: parseInt(opts.maxSources, 10) || 3,
+          skipCompile: opts.skipCompile,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(JSON.stringify(report, null, 2), jsonMode);
+          return;
+        }
+        console.log();
+        console.log(chalk.green('Autohunt complete'));
+        console.log(`  Questions collected: ${report.questionsCollected}`);
+        console.log(`  Questions chased:    ${report.questionsChosen}`);
+        console.log(`  URLs attempted:      ${report.urlsAttempted}`);
+        console.log(`  Sources ingested:    ${chalk.cyan(String(report.sourcesIngested))}`);
+        console.log(`  Recompiled:          ${report.recompiled ? chalk.green('yes') : chalk.yellow('no')}`);
+        console.log();
+        console.log(chalk.dim(`Digest: ${report.digestPath}`));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
     });
 
   kb
