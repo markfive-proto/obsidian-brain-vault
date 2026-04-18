@@ -17,6 +17,8 @@ import { verifyKb } from '../kb/verify.js';
 import { evalKb } from '../kb/eval.js';
 import { autohuntKb } from '../kb/autohunt.js';
 import { lintKb } from '../kb/lint.js';
+import { ingestCodebase } from '../kb/ingest-codebase.js';
+import { snapshotProject } from '../kb/snapshot.js';
 import { resolveLLMConfig, type LLMProvider } from '../kb/llm.js';
 
 const KB_DIRS = {
@@ -755,6 +757,115 @@ provider SDK directly and expose all ops as MCP tools.
         console.log(`  Recompiled:          ${report.recompiled ? chalk.green('yes') : chalk.yellow('no')}`);
         console.log();
         console.log(chalk.dim(`Digest: ${report.digestPath}`));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  kb
+    .command('ingest-codebase [path]')
+    .description('Ingest a local git repo\'s docs, history, and metadata into raw/codebase/')
+    .option('--no-docs', 'Skip docs/**/*.md')
+    .option('--no-plans', 'Skip plans/**/*.md')
+    .option('--no-history', 'Skip git log summary')
+    .option('--no-issues', 'Skip gh issue list')
+    .option('--overwrite', 'Overwrite existing files', false)
+    .option('--max-history <n>', 'Max git-log commits to capture', '200')
+    .option('--max-size <bytes>', 'Max per-file size', '1048576')
+    .action(async (
+      repoPath: string | undefined,
+      opts: { docs: boolean; plans: boolean; history: boolean; issues: boolean; overwrite: boolean; maxHistory: string; maxSize: string },
+    ) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const resolvedRepo = repoPath ? join(process.cwd(), repoPath) : process.cwd();
+        if (!jsonMode) console.log(chalk.dim(`Ingesting codebase from ${resolvedRepo}`));
+        const result = await ingestCodebase(vaultPath, resolvedRepo, {
+          overwrite: opts.overwrite,
+          includeDocs: opts.docs,
+          includePlans: opts.plans,
+          includeHistory: opts.history,
+          includeIssues: opts.issues,
+          maxHistoryCommits: parseInt(opts.maxHistory, 10) || 200,
+          maxFileSize: parseInt(opts.maxSize, 10) || 1_048_576,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(JSON.stringify(result, null, 2), jsonMode);
+          return;
+        }
+        console.log();
+        console.log(chalk.green(`Codebase ingested`));
+        console.log(`  Repo slug:           ${result.repoSlug}`);
+        console.log(`  Files ingested:      ${chalk.cyan(String(result.filesIngested.length))}`);
+        console.log(`  Total bytes:         ${result.totalBytes.toLocaleString()}`);
+        if (result.remote) console.log(`  Remote:              ${result.remote}`);
+        if (result.skipped.length) {
+          console.log(chalk.yellow(`  Skipped:             ${result.skipped.length}`));
+          for (const s of result.skipped.slice(0, 5)) console.log(chalk.dim(`    - ${s.path}: ${s.reason}`));
+        }
+        console.log();
+        console.log(chalk.dim('Next: obs kb compile'));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  kb
+    .command('snapshot [path]')
+    .description('One command: ingest-codebase + compile + ask. Goes from 0 to project summary.')
+    .option('--question <q>', 'Custom question for the final ask step')
+    .option('--provider <p>', 'LLM provider')
+    .option('--model <m>', 'Model id override')
+    .action(async (
+      repoPath: string | undefined,
+      opts: { question?: string; provider?: string; model?: string },
+    ) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const config = resolveLLMConfig({ provider: opts.provider as LLMProvider | undefined, model: opts.model });
+        const resolvedRepo = repoPath ? join(process.cwd(), repoPath) : process.cwd();
+
+        if (!jsonMode) {
+          console.log(chalk.dim(`Snapshot: ${resolvedRepo}`));
+          console.log(chalk.dim(`Stages: ingest-codebase → compile → ask`));
+        }
+        const result = await snapshotProject(vaultPath, {
+          repoPath: resolvedRepo,
+          question: opts.question,
+          config,
+          onProgress: jsonMode ? undefined : msg => console.error(chalk.dim(msg)),
+        });
+
+        if (jsonMode) {
+          output(JSON.stringify(result, null, 2), jsonMode);
+          return;
+        }
+
+        console.log();
+        console.log(chalk.green('Snapshot complete'));
+        console.log(`  Codebase files:      ${result.codebase.filesIngested.length}`);
+        console.log(`  Concepts extracted:  ${result.compile.conceptsTouched}`);
+        console.log();
+        console.log(chalk.bold(result.ask.answer.restatedQuestion));
+        for (const b of result.ask.answer.tldrBullets) console.log(`  • ${b}`);
+        console.log();
+        console.log(chalk.green(`Snapshot: ${result.snapshotPath}`));
+        console.log(chalk.dim(`Full answer: ${result.ask.answerPath}`));
       } catch (err) {
         printError((err as Error).message);
         process.exit(1);

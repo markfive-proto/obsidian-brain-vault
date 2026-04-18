@@ -5,9 +5,9 @@ import { join } from 'node:path';
  * and the Claude Code skill pack. Single source of truth.
  */
 export const KB_DIRS = {
-  raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets'],
+  raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets', 'codebase'],
   compiled: ['concepts', 'people', 'orgs'],
-  outputs: ['answers', 'reports', 'briefs', 'slides', 'charts', 'graphs', 'handbooks', 'lint', 'eval', 'autohunt', 'verify'],
+  outputs: ['answers', 'reports', 'briefs', 'slides', 'charts', 'graphs', 'handbooks', 'lint', 'eval', 'autohunt', 'verify', 'snapshots'],
 } as const;
 
 export function rawDir(vaultPath: string, sub: string): string {

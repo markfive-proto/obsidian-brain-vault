@@ -1,6 +1,11 @@
-# obsidian-brain-vault — landing page (Brain Vault)
+# obsidian-brain-vault — landing + web UI
 
-Next.js App Router static-export site for the `obsidian-brain-vault` project (brand: **Brain Vault**, CLI binary: `obs`). Deploys to Vercel.
+Next.js 15 App Router project that serves **two modes**:
+
+1. **Marketing landing** (`/`) — the existing hero page.
+2. **Multi-vault web UI** (`/vaults`) — a browsable dashboard over the
+   vaults registered in `~/.obs/workspace.yaml`. This is what `obs serve`
+   will ship when run locally on a user's machine.
 
 ## Develop
 
@@ -11,62 +16,88 @@ pnpm dev
 # http://localhost:3000
 ```
 
-## Build (static export)
+### Dev-mode vaults (no workspace registered)
+
+If you don't have `~/.obs/workspace.yaml` populated yet, point the UI at
+one or more directories with the `OBS_DEV_VAULTS` env var:
+
+```bash
+OBS_DEV_VAULTS=/path/to/vault-a,/path/to/vault-b pnpm dev
+```
+
+Each directory is surfaced as a synthetic vault named after its
+basename. The first one is marked default.
+
+## Build
 
 ```bash
 pnpm build
-# Static HTML under ./out/
+pnpm start
 ```
 
-## Deploy
+This ships a **standard Next.js server build**, not a static export,
+because the `/api/vaults/*` routes read the local filesystem at request
+time. `output: 'export'` has been removed from `next.config.mjs`.
 
-### Option A: standalone Vercel project
+If you ever need the old static marketing-only build (e.g. to host on a
+plain CDN), set `NEXT_EXPORT=1` at build time:
 
 ```bash
-cd landing
-vercel deploy --prod
+NEXT_EXPORT=1 pnpm build
+# Static HTML under ./out/ — API routes won't work in this mode.
 ```
 
-### Option B: subpath of supermarcus.ai (recommended for SEO authority)
+## Deploy implications
 
-Two approaches:
+- **`obs serve` (local-host mode):** run `pnpm start` on port 4242. No
+  base path, no external auth. Trusts `localhost` only.
+- **Vercel / subpath deploy:** the marketing-only `NEXT_EXPORT=1` build
+  still works for SEO deployments at `supermarcus.ai/brain-os`. Do NOT
+  deploy the full API-route build publicly without adding auth — the
+  `/api/vaults/*` endpoints read the host's `~/.obs/` directory.
 
-**1. Vercel rewrite from supermarcus.ai → this project.** Add to `supermarcus.ai`'s `vercel.json`:
+## API surface
 
-```json
-{
-  "rewrites": [
-    { "source": "/brain-os", "destination": "https://obs-landing.vercel.app" },
-    { "source": "/brain-os/:path*", "destination": "https://obs-landing.vercel.app/:path*" }
-  ]
-}
+| Route | Purpose |
+| --- | --- |
+| `GET /api/vaults` | List all vaults with file counts. |
+| `GET /api/vaults/:name` | Metadata + last-modified for one vault. |
+| `GET /api/vaults/:name/tree?dir=raw\|compiled\|outputs` | File tree. |
+| `GET /api/vaults/:name/file?path=<rel>` | Parsed markdown (frontmatter + body). `.md` only, 2MB cap, path-traversal rejected. |
+| `POST /api/vaults/:name/ask` | Proxy to `askKb` — body `{ question, includeRaw? }`. |
+
+## Architecture
+
+```
+landing/
+├── app/
+│   ├── page.tsx                          marketing hero
+│   ├── vaults/
+│   │   ├── page.tsx                      all-vaults grid
+│   │   └── [name]/
+│   │       ├── page.tsx                  raw / compiled / outputs browser
+│   │       ├── VaultBrowser.tsx          client split-pane
+│   │       └── ask/page.tsx              ask-a-question tab
+│   └── api/vaults/...                    REST endpoints (Node runtime)
+├── components/
+│   ├── VaultSidebar.tsx                  left rail + ⌘K palette
+│   ├── TabBar.tsx
+│   ├── FileTree.tsx
+│   ├── MarkdownView.tsx
+│   └── AskPanel.tsx
+└── lib/
+    ├── workspace.ts                      temporary WorkspaceClient
+    └── vault-fs.ts                       safe fs helpers (traversal-proof)
 ```
 
-The rewrite preserves the parent-domain authority while hosting the content on Vercel. Best for SEO.
+## Customization
 
-**2. `basePath` build.** Deploy under a sub-path by setting env before build:
+- Colors / theme: `app/globals.css` (CSS variables).
+- Marketing copy: `app/page.tsx`.
+- Sidebar / command palette: `components/VaultSidebar.tsx`.
 
-```bash
-NEXT_PUBLIC_BASE_PATH=/brain-os \
-NEXT_PUBLIC_SITE_URL=https://supermarcus.ai/brain-os \
-pnpm build
-# Then copy the contents of ./out/ into supermarcus.ai repo's public/brain-os/
-```
+## SEO primitives (marketing mode)
 
-## SEO primitives
-
-- `app/layout.tsx` — full `Metadata` + `Viewport`, OpenGraph, Twitter Card, JSON-LD (`SoftwareApplication`)
-- `app/opengraph-image.tsx` — dynamic 1200×630 OG image rendered at the Edge
-- `app/robots.ts` and `app/sitemap.ts` — auto-generated
-- Canonical URL via `NEXT_PUBLIC_SITE_URL`
-- Keywords optimized for: `LLM wiki`, `Karpathy knowledge base`, `AI agent context`, `markdown knowledge base`, `MCP knowledge base`, `second brain CLI`
-
-## Images
-
-Static images under `public/` — symlinked from the repo's `docs/images/`. If you regenerate them, re-copy into `public/`.
-
-## Customization points
-
-- Colors / theme: `app/globals.css` (CSS variables)
-- Content / copy: `app/page.tsx` (single file for the whole page)
-- Social handle for Twitter Card: `app/layout.tsx` → `twitter.creator`
+- `app/layout.tsx` — full `Metadata` + `Viewport`, OpenGraph, Twitter Card.
+- `app/robots.ts` and `app/sitemap.ts`.
+- Canonical URL via `NEXT_PUBLIC_SITE_URL`.
