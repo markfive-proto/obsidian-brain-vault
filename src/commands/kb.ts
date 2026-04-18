@@ -7,6 +7,7 @@ import { getVaultPath } from '../config.js';
 import { output, printError } from '../utils/output.js';
 import { extractWikilinks } from '../utils/markdown.js';
 import { detectSourceType, ingestArticle, type IngestSourceType } from '../kb/ingest.js';
+import { spiderAvailable, type FetcherKind } from '../kb/fetcher.js';
 
 const KB_DIRS = {
   raw: ['articles', 'papers', 'repos', 'transcripts', 'images', 'datasets'],
@@ -342,7 +343,8 @@ provider SDK directly and expose all ops as MCP tools.
     .description('Ingest a URL, file, or repo into raw/')
     .option('--type <t>', 'Force type: article|paper|repo|transcript|image|dataset')
     .option('--overwrite', 'Overwrite an existing file with the same slug', false)
-    .action(async (source: string, opts: { type?: string; overwrite: boolean }) => {
+    .option('--fetcher <f>', 'HTML fetcher: spider | defuddle | auto (default)', 'auto')
+    .action(async (source: string, opts: { type?: string; overwrite: boolean; fetcher: string }) => {
       try {
         const vaultPath = getVaultPath(program.opts().vault);
         const vault = new Vault(vaultPath);
@@ -353,10 +355,23 @@ provider SDK directly and expose all ops as MCP tools.
 
         const sourceType = (opts.type as IngestSourceType | undefined) ?? detectSourceType(source);
         const jsonMode = program.opts().json;
+        const fetcherKind = opts.fetcher as FetcherKind;
+        if (!['spider', 'defuddle', 'auto'].includes(fetcherKind)) {
+          printError(`Unknown --fetcher value "${opts.fetcher}". Use: spider | defuddle | auto`);
+          process.exit(1);
+        }
 
         if (sourceType === 'article') {
-          if (!jsonMode) console.log(chalk.dim(`Ingesting article via defuddle: ${source}`));
-          const result = await ingestArticle(vaultPath, source, { overwrite: opts.overwrite });
+          const resolvedFetcher =
+            fetcherKind === 'auto' ? (spiderAvailable() ? 'spider' : 'defuddle') : fetcherKind;
+          if (!jsonMode) {
+            console.log(chalk.dim(`Ingesting article (fetch: ${resolvedFetcher}, extract: defuddle)`));
+            console.log(chalk.dim(source));
+          }
+          const result = await ingestArticle(vaultPath, source, {
+            overwrite: opts.overwrite,
+            fetcher: fetcherKind,
+          });
 
           if (jsonMode) {
             output(JSON.stringify(result, null, 2), jsonMode);
@@ -368,8 +383,11 @@ provider SDK directly and expose all ops as MCP tools.
             console.log(chalk.dim('(Use --overwrite to replace.)'));
           } else {
             console.log(chalk.green(`Ingested: ${result.path}`));
-            console.log(`  Title:      ${result.title}`);
-            console.log(`  Word count: ${result.wordCount.toLocaleString()}`);
+            console.log(`  Title:       ${result.title}`);
+            console.log(`  Word count:  ${result.wordCount.toLocaleString()}`);
+            if (result.fetchedVia) {
+              console.log(chalk.dim(`  Fetched via: ${result.fetchedVia}`));
+            }
           }
           console.log();
           console.log(chalk.dim('Next: obs kb compile'));

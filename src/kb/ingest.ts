@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ingestLogPath, rawDir } from './paths.js';
+import { fetchHtml, type FetcherKind } from './fetcher.js';
 
 export type IngestSourceType = 'article' | 'paper' | 'repo' | 'transcript' | 'image' | 'dataset';
 
@@ -58,6 +59,10 @@ export interface DefuddleDoc {
   [k: string]: unknown;
 }
 
+/**
+ * Run defuddle on either a URL or a local HTML file path. Both are valid
+ * `source` arguments to defuddle parse.
+ */
 export function runDefuddle(source: string): Promise<DefuddleDoc> {
   return new Promise((resolve, reject) => {
     const proc = spawn('npx', ['-y', 'defuddle', 'parse', source, '--json', '--md'], {
@@ -109,18 +114,40 @@ function yamlFrontmatter(data: Record<string, unknown>): string {
 }
 
 /**
- * Ingest a URL or local HTML file as an article. Writes raw/articles/<date>-<slug>.md,
- * appends to raw/INGEST-LOG.md, returns the result.
+ * Ingest a URL or local HTML file as an article. Two-stage pipeline:
+ *   1. FETCH html (spider-rs if installed, else defuddle's built-in fetcher)
+ *   2. EXTRACT clean markdown + metadata via defuddle
  *
- * If the target file already exists and `overwrite` is false, the existing
- * file is kept and `duplicate: true` is returned.
+ * Writes raw/articles/<date>-<slug>.md, appends to raw/INGEST-LOG.md,
+ * returns the result. If the target file already exists and `overwrite`
+ * is false, the existing file is kept and `duplicate: true` is returned.
  */
 export async function ingestArticle(
   vaultPath: string,
   source: string,
-  opts: { overwrite?: boolean } = {},
-): Promise<IngestResult> {
-  const doc = await runDefuddle(source);
+  opts: { overwrite?: boolean; fetcher?: FetcherKind } = {},
+): Promise<IngestResult & { fetchedVia?: 'spider' | 'defuddle' }> {
+  // If source is a URL, fetch first (spider preferred). If it's already a
+  // local file path or HTML string, skip the fetch step — defuddle handles
+  // both forms directly.
+  const isUrl = /^https?:\/\//i.test(source);
+  let defuddleInput = source;
+  let cleanup: () => void = () => {};
+  let fetchedVia: 'spider' | 'defuddle' | undefined;
+
+  if (isUrl) {
+    const fetched = await fetchHtml(source, opts.fetcher ?? 'auto');
+    defuddleInput = fetched.htmlPath;
+    cleanup = fetched.cleanup;
+    fetchedVia = fetched.via;
+  }
+
+  let doc: DefuddleDoc;
+  try {
+    doc = await runDefuddle(defuddleInput);
+  } finally {
+    cleanup();
+  }
 
   const title = (doc.title || doc.description || source).trim();
   const dateStamp = new Date().toISOString().slice(0, 10);
@@ -135,7 +162,7 @@ export async function ingestArticle(
   if (existsSync(absolutePath) && !opts.overwrite) {
     const existing = readFileSync(absolutePath, 'utf-8');
     const wordCount = existing.split(/\s+/).filter(Boolean).length;
-    return { type: 'article', path: relativePath, absolutePath, title, wordCount, duplicate: true };
+    return { type: 'article', path: relativePath, absolutePath, title, wordCount, duplicate: true, fetchedVia };
   }
 
   const frontmatter = yamlFrontmatter({
@@ -156,7 +183,7 @@ export async function ingestArticle(
 
   appendIngestLog(vaultPath, { type: 'article', path: relativePath, title });
 
-  return { type: 'article', path: relativePath, absolutePath, title, wordCount };
+  return { type: 'article', path: relativePath, absolutePath, title, wordCount, fetchedVia };
 }
 
 /**
