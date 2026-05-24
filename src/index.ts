@@ -6,7 +6,7 @@ const program = new Command();
 
 program
   .name('obs')
-  .description('Community-built CLI for Obsidian vaults')
+  .description('Brain Vault — the AI knowledge base that writes itself')
   .version('0.1.0')
   .option('--vault <path>', 'Path to Obsidian vault')
   .option('--json', 'Output as JSON');

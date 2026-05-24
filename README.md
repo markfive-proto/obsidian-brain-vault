@@ -10,7 +10,7 @@
 
 The free, community-built implementation of Andrej Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): drop raw sources in, an LLM compiles them into an interlinked wiki, answers you save compound over time. Built to give AI agents persistent context that goes beyond a single chat session.
 
-**CLI + MCP-ready.** Claude Code skill pack. Works with Claude Desktop, Cursor, Windsurf. Any markdown folder — Obsidian-compatible today, vendor-neutral by design.
+**AI-first. Headless. MCP-ready.** Works with Claude Desktop, Cursor, Windsurf, Claude Code. Any markdown folder — Obsidian-compatible today, vendor-neutral by design.
 
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![free](https://img.shields.io/badge/free-forever-22c55e)](LICENSE) [![cli + mcp](https://img.shields.io/badge/CLI%20%2B%20MCP-ready-06b6d4)](./README.md#connect-it-to-claude-desktop--cursor--windsurf-mcp)
 
@@ -24,30 +24,61 @@ Meanwhile you have 20 browser tabs you meant to read, a folder of PDFs you never
 
 Your AI agents need **persistent, compounding context**. That's what `obs` gives them.
 
+---
+
+## The KB loop
+
+```
+RAW sources  →  obs kb ingest  →  raw/
+raw/          →  obs kb compile →  compiled/ concept pages
+compiled/     →  obs kb ask     →  outputs/ answers (filed back as new context)
+```
+
+Every ingest adds to the wiki. Every answer becomes part of the next answer. Source #50 links to ~10 existing pages and updates them — it doesn't sit alone.
+
+```bash
+obs kb ingest https://example.com/article   # fetch + file to raw/
+obs kb compile                              # LLM compiles raw/ → concept pages
+obs kb ask "what do I know about X?"        # query + save to outputs/
+```
+
+<p align="center">
+  <img src="./docs/images/karpathy-loop.png" alt="The Karpathy loop: RAW sources → COMPILED wiki → OUTPUTS, with outputs filing back into raw" width="90%" />
+</p>
+
+---
+
 ## What `obs` gives you
 
-- **A wiki that compounds.** Drop a URL, PDF, repo, transcript, or image. The LLM extracts concepts, cross-references everything you already have, and files it. Source #50 doesn't sit alone — it links to ~10 existing pages and updates them.
+- **A wiki that compounds.** Drop a URL, PDF, repo, transcript, or image. The LLM extracts concepts, cross-references everything you already have, and files it.
 - **Answers that stick.** Ask a question. The answer is saved as a new note with wikilinks. Next question uses it as context.
-- **A Unix tool, not a plugin.** Pipeable, scriptable, cron-able, CI-friendly. Works when Obsidian isn't running. Works headless on a server.
-- **100+ Obsidian-native operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph analysis — same vault Obsidian sees.
-- **Two personalities in one tool.** `obs kb ingest` as a command. `/clip <url>` as a Claude Code slash command. Same underlying logic.
+- **A built-in MCP server.** Plug into Claude Desktop, Cursor, Windsurf, Claude Code. Your agents query the wiki natively — no copy-pasting context.
+- **Remote MCP hosting.** Expose your vault over HTTPS so Claude.ai, mobile clients, or any AI tool can reach it from anywhere.
+- **Headless by design.** Runs on a server, in CI, in a cron job. Obsidian doesn't need to be open.
+- **A Unix tool.** Pipeable, scriptable, `--json` on every command. Compose it with anything.
+- **A Claude Code skill pack.** `/clip`, `/compile`, `/ask`, `/lint` as slash commands — same logic as the CLI, conversational interface.
 
-## Why `obs`
+---
 
-`obs` gives your AI agents a **compiled wiki** — a persistent, interlinked markdown artifact that compounds every time you add a source. Each agent session starts with your full context. Each answer you save makes the next answer better.
+## Why `obs` — and how it differs from Obsidian's official CLI
 
-- **Free and open-source.** MIT. No paid tier, no subscription, no lock-in.
-- **A Unix CLI.** Pipeable, scriptable, cron-able, CI-friendly. Runs headless on servers, in containers, from a shell script.
-- **100+ vault operations.** Tags, tasks, links, daily notes, templates, canvas, bases, graph — all from one tool.
-- **A built-in MCP server.** Plug into Claude Desktop, Cursor, Windsurf, Claude Code. Your agents query the wiki natively.
-- **A Claude Code skill pack.** Slash commands mirror every CLI command for conversational workflows.
-- **Vendor-neutral.** Works with any markdown folder. Obsidian-compatible today — if you ever outgrow Obsidian, the wiki goes with you.
+Obsidian shipped their own [official CLI](https://obsidian.md/cli) in early 2026 (now free). It's excellent at what it does: remote-controlling the Obsidian app, triggering plugins, deploying vaults, integrating Obsidian into team toolchains. It requires Obsidian to be running.
 
-On the roadmap, three features no one has shipped yet:
+`obs` is a different category of tool:
 
-- `obs kb verify` — fact-check every claim on a concept page against its cited sources; flag hallucinations with `[!unverified]` callouts
-- `obs kb eval` — self-test with held-out Q&A, measure the wiki's answer accuracy, track IQ over time
-- `obs kb autohunt` — overnight research loop that hunts sources for your open questions and hands you a morning digest
+| | Official Obsidian CLI | `obs` (this project) |
+|---|---|---|
+| Requires Obsidian running | Yes | No — fully headless |
+| LLM knowledge compilation | No | Yes — the core feature |
+| `ingest → compile → ask` loop | No | Yes |
+| Built-in MCP server | No | Yes (`obs-mcp`) |
+| Remote MCP (HTTPS, mobile) | No | Yes (supergateway + cloudflared) |
+| Claude Code skill pack | No | Yes |
+| Works on a server / in CI | No | Yes |
+| Vendor-neutral (no Obsidian dep) | No | Yes |
+| Vault ops (tags, links, search…) | Via Obsidian's API | Direct file I/O, no app needed |
+
+If you want to script Obsidian's UI — use their CLI. If you want an AI agent knowledge base that runs anywhere and accumulates context over time — that's `obs`.
 
 ---
 
@@ -103,10 +134,6 @@ your-vault/
     └── lint/
 ```
 
-<p align="center">
-  <img src="./docs/images/karpathy-loop.png" alt="The Karpathy loop: RAW sources → COMPILED wiki → OUTPUTS, with outputs filing back into raw" width="90%" />
-</p>
-
 Open the vault in Obsidian — everything is plain markdown with `[[wikilinks]]`.
 
 ---
@@ -147,8 +174,6 @@ Once installed, in any Claude Code session:
 | `/slides <topic>` | Renders a Marp slide deck |
 | `/brief <topic>` | Renders a 1-page executive brief |
 | `/chart <dataset>` | Renders a matplotlib chart |
-
-The CLI (`obs kb ingest`, `obs kb compile`, etc.) and the slash commands share the same underlying skills. Use whichever fits your workflow — pipes in the terminal, conversational in Claude Code.
 
 ---
 
@@ -258,14 +283,13 @@ npm i -g supergateway
 ```bash
 supergateway \
   --stdio "obs-mcp --vault /absolute/path/to/your/vault" \
-  --port 4321
+  --port 4321 \
+  --header "X-Accel-Buffering: no"
 ```
 
-Your vault is now reachable at `http://localhost:4321/sse`. You can connect Claude Desktop or Claude Code directly to this local URL if you prefer HTTP over stdio:
+> **Why `--header "X-Accel-Buffering: no"`?** This tells Cloudflare (and nginx-based proxies) not to buffer the SSE response stream. Without it, the connection silently stalls when routed through a reverse proxy.
 
-```json
-{ "mcpServers": { "obs": { "url": "http://localhost:4321/sse" } } }
-```
+Your vault is now reachable at `http://localhost:4321/sse`.
 
 ### 3. Expose it over the internet with Cloudflare Tunnel (optional)
 
@@ -290,6 +314,7 @@ ingress:
     originRequest:
       disableChunkedEncoding: true   # required for SSE streaming
       tcpKeepAlive: 30s
+      http2Origin: false
   - service: http_status:404
 EOF
 
@@ -299,8 +324,6 @@ cloudflared tunnel route dns obs-mcp obs-mcp.yourdomain.com
 # Run the tunnel
 cloudflared tunnel run
 ```
-
-> **Why `disableChunkedEncoding: true`?** Cloudflare buffers chunked responses by default, which breaks SSE streams. This flag disables that buffering and is required for MCP over SSE to work through the tunnel.
 
 Keep the tunnel alive on macOS with a LaunchAgent:
 
@@ -358,11 +381,11 @@ claude mcp add obs --url https://obs-mcp.yourdomain.com/sse
 
 21 MCP tools are registered (15 vault ops + 6 KB ops):
 
+**KB ops:** `obs_kb_init`, `obs_kb_stats`, `obs_kb_list_raw`, `obs_kb_list_concepts`, `obs_kb_list_outputs`, `obs_kb_append_ingest_log`
+
 **Vault ops:** `obs_vault_info`, `obs_read_note`, `obs_write_note`, `obs_create_note`, `obs_search`, `obs_list_files`, `obs_manage_tags`, `obs_manage_properties`, `obs_daily_note`, `obs_list_links`, `obs_list_files_filtered`, `obs_links_path`, `obs_links_orphans`, `obs_vault_wordcount`
 
-**KB ops (new):** `obs_kb_init`, `obs_kb_stats`, `obs_kb_list_raw`, `obs_kb_list_concepts`, `obs_kb_list_outputs`, `obs_kb_append_ingest_log`
-
-Ask any of the above AI tools: *"Show me my KB stats and list 5 concept pages."* It will call the MCP tools, no prompting needed.
+Ask any connected AI: *"Show me my KB stats and list 5 concept pages."* It will call the MCP tools, no prompting needed.
 
 ---
 
@@ -380,17 +403,17 @@ obs kb stats                             # Health summary
 obs kb list raw|concepts|outputs         # Browse
 ```
 
-The roadmap uniques:
+The roadmap uniques (Phase 3 — nobody has shipped these):
 
 ```bash
-obs kb verify <concept>                  # Fact-check against sources  [phase 3]
-obs kb eval                              # Self-test wiki IQ           [phase 3]
-obs kb autohunt                          # Overnight research daemon   [phase 3]
-obs kb publish <concept> --format blog   # Blog / tweet / newsletter   [phase 3]
+obs kb verify <concept>                  # Fact-check claims against cited sources
+obs kb eval                              # Self-test wiki IQ, track accuracy over time
+obs kb autohunt                          # Overnight research daemon for open questions
+obs kb publish <concept> --format blog   # Blog / tweet / newsletter / LinkedIn post
 obs kb watch                             # Auto-recompile on raw/ change [phase 2]
 ```
 
-Everyday vault ops:
+Headless vault ops (work without Obsidian open):
 
 ```bash
 obs vault info                           # Vault name, stats, plugins
@@ -413,13 +436,13 @@ Beyond the knowledge-base pack, `obs` ships six cognitive skill packs that turn 
 
 | Pack | Slash commands | What it does |
 |---|---|---|
+| **knowledge-base** | `/clip`, `/paper`, `/compile`, `/ask`, `/lint`, `/slides`, `/brief`, … | Karpathy LLM-Wiki workflow |
 | **capture** | `/dump`, `/capture`, `/quick` | Brain dumps, rapid-fire capture |
 | **clarify** | `/articulate`, `/expand`, `/simplify` | Rewrite messy notes, distill to core |
 | **connect** | `/connect`, `/trace`, `/drift` | Find hidden connections, track evolution |
 | **reflect** | `/emerge`, `/challenge`, `/growth` | Cluster ideas, challenge assumptions |
 | **act** | `/next`, `/decide`, `/graduate` | Priorities, decisions, promote ideas |
 | **review** | `/today`, `/closeday`, `/weekly` | Daily and weekly rituals |
-| **knowledge-base** (new) | `/clip`, `/paper`, `/compile`, `/ask`, `/lint`, `/slides`, `/brief`, ... | Karpathy LLM-Wiki workflow |
 
 ```bash
 obs skills list                           # Browse all packs
@@ -532,8 +555,8 @@ If `obs` helps you, a star goes a long way — it's how others discover the proj
 
 ## Acknowledgments
 
-- [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) for describing the LLM Wiki pattern.
-- [Obsidian](https://obsidian.md) for the markdown-vault format that makes all of this possible.
+- [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) for describing the LLM Wiki pattern that this project implements.
+- [Obsidian](https://obsidian.md) for the markdown-vault format and the ecosystem that makes this possible.
 - [Model Context Protocol](https://modelcontextprotocol.io) for the integration surface.
 - [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) for pioneering agent-on-vault workflows.
 

@@ -28,10 +28,15 @@
   "author": "markfive-proto",
   "keywords": [
     "obsidian",
-    "cli",
+    "knowledge-base",
+    "mcp",
+    "ai-agents",
+    "llm",
+    "karpathy",
+    "second-brain",
     "markdown",
     "vault",
-    "notes"
+    "cli"
   ],
   "license": "MIT",
   "engines": {
