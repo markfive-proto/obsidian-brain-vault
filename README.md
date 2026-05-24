@@ -156,34 +156,51 @@ The CLI (`obs kb ingest`, `obs kb compile`, etc.) and the slash commands share t
 
 `obs` includes a built-in [MCP](https://modelcontextprotocol.io) server (`obs-mcp`) so any AI tool that speaks MCP can use your vault as a tool.
 
-### Claude Desktop
+### One-command setup (recommended)
 
-1. Open your Claude Desktop config:
+```bash
+obs setup --vault /absolute/path/to/your/vault
+```
 
-   ```bash
-   # macOS
-   open ~/Library/Application\ Support/Claude/claude_desktop_config.json
+This auto-detects every AI editor you have installed (Claude Desktop, Claude Code, Cursor, Windsurf, Codex, OpenCode) and patches each config in one shot. Preview what it will do first:
 
-   # Windows
-   notepad %APPDATA%\Claude\claude_desktop_config.json
-   ```
+```bash
+obs setup --dry-run --vault /absolute/path/to/your/vault
+```
 
-2. Add the `obs` server:
+Restart any editors that were patched. You'll see an 🔨 icon (Claude Desktop) or equivalent — click it to confirm `obs_*` tools are listed.
 
-   ```json
-   {
-     "mcpServers": {
-       "obs": {
-         "command": "obs-mcp",
-         "args": ["--vault", "/absolute/path/to/your/vault"]
-       }
-     }
-   }
-   ```
+### Manual setup (if you prefer)
 
-3. Restart Claude Desktop. You'll see an 🔨 icon in the input bar — click it to confirm `obs_*` tools are listed.
+<details>
+<summary>Claude Desktop</summary>
 
-### Cursor
+```bash
+# macOS
+open ~/Library/Application\ Support/Claude/claude_desktop_config.json
+
+# Windows
+notepad %APPDATA%\Claude\claude_desktop_config.json
+```
+
+Add to `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "obs": {
+      "command": "obs-mcp",
+      "args": ["--vault", "/absolute/path/to/your/vault"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop.
+</details>
+
+<details>
+<summary>Cursor</summary>
 
 Add to `~/.cursor/mcp.json` (or **Settings → MCP → Add Server**):
 
@@ -197,8 +214,10 @@ Add to `~/.cursor/mcp.json` (or **Settings → MCP → Add Server**):
   }
 }
 ```
+</details>
 
-### Windsurf
+<details>
+<summary>Windsurf</summary>
 
 Add to `~/.codeium/windsurf/mcp_config.json`:
 
@@ -212,16 +231,128 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
   }
 }
 ```
+</details>
 
-### Claude Code (CLI)
+<details>
+<summary>Claude Code (CLI)</summary>
 
 ```bash
 claude mcp add obs obs-mcp --vault /absolute/path/to/your/vault
-# Then in any Claude Code session:
-claude
-> /mcp              # confirms obs is connected
-> list my concept pages
 ```
+</details>
+
+---
+
+## Remote MCP — expose your vault to Claude.ai, mobile, or any HTTP client
+
+By default `obs-mcp` speaks stdio, which only works on the same machine. To use your vault from **Claude.ai web chat**, a second device, or any tool that only supports HTTP MCP, wrap it with [`supergateway`](https://github.com/supermaven-inc/supergateway):
+
+### 1. Install supergateway
+
+```bash
+npm i -g supergateway
+```
+
+### 2. Start the HTTP/SSE bridge
+
+```bash
+supergateway \
+  --stdio "obs-mcp --vault /absolute/path/to/your/vault" \
+  --port 4321
+```
+
+Your vault is now reachable at `http://localhost:4321/sse`. You can connect Claude Desktop or Claude Code directly to this local URL if you prefer HTTP over stdio:
+
+```json
+{ "mcpServers": { "obs": { "url": "http://localhost:4321/sse" } } }
+```
+
+### 3. Expose it over the internet with Cloudflare Tunnel (optional)
+
+If you want to reach the vault from Claude.ai or any remote client:
+
+```bash
+# Install cloudflared once
+brew install cloudflared
+
+# Authenticate and create a tunnel
+cloudflared tunnel login
+cloudflared tunnel create obs-mcp
+
+# Create ~/.cloudflared/config.yml
+cat > ~/.cloudflared/config.yml << 'EOF'
+tunnel: <your-tunnel-id>
+credentials-file: ~/.cloudflared/<your-tunnel-id>.json
+
+ingress:
+  - hostname: obs-mcp.yourdomain.com
+    service: http://localhost:4321
+    originRequest:
+      disableChunkedEncoding: true   # required for SSE streaming
+      tcpKeepAlive: 30s
+  - service: http_status:404
+EOF
+
+# Route your hostname to the tunnel
+cloudflared tunnel route dns obs-mcp obs-mcp.yourdomain.com
+
+# Run the tunnel
+cloudflared tunnel run
+```
+
+> **Why `disableChunkedEncoding: true`?** Cloudflare buffers chunked responses by default, which breaks SSE streams. This flag disables that buffering and is required for MCP over SSE to work through the tunnel.
+
+Keep the tunnel alive on macOS with a LaunchAgent:
+
+```bash
+# Create ~/Library/LaunchAgents/com.yourname.cloudflared-obs.plist
+# Set ProgramArguments to: cloudflared tunnel --config ~/.cloudflared/config.yml run
+# Set RunAtLoad: true, KeepAlive: true
+launchctl load ~/Library/LaunchAgents/com.yourname.cloudflared-obs.plist
+```
+
+### 4. Connect any remote client
+
+Once the tunnel is running:
+
+**Claude Desktop** — Claude Desktop only speaks stdio, so bridge the SSE stream with `mcp-remote`:
+
+```json
+{
+  "mcpServers": {
+    "obs-remote": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://obs-mcp.yourdomain.com/sse"]
+    }
+  }
+}
+```
+
+First launch takes 10–20 s while `npx` fetches `mcp-remote`. After that it's instant.
+
+**Claude.ai web → Settings → Integrations → Add MCP Server** (supports SSE URLs natively):
+```
+https://obs-mcp.yourdomain.com/sse
+```
+
+**Claude Code:**
+```bash
+claude mcp add obs --url https://obs-mcp.yourdomain.com/sse
+```
+
+**Cursor / Windsurf** (via `mcp-remote`, same as Claude Desktop):
+```json
+{
+  "mcpServers": {
+    "obs-remote": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://obs-mcp.yourdomain.com/sse"]
+    }
+  }
+}
+```
+
+---
 
 ### What the AI can now do
 
