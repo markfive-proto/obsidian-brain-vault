@@ -57,6 +57,8 @@ obs kb ask "what do I know about X?"        # query + save to outputs/
 - **Headless by design.** Runs on a server, in CI, in a cron job. Obsidian doesn't need to be open.
 - **A Unix tool.** Pipeable, scriptable, `--json` on every command. Compose it with anything.
 - **A Claude Code skill pack.** `/clip`, `/compile`, `/ask`, `/lint` as slash commands — same logic as the CLI, conversational interface.
+- **AutoDream.** A nightly `compile → lint → stats` job that keeps your wiki fresh while you sleep. One script, works on macOS (launchd) and Linux (cron).
+- **Ready-to-use scaffold.** The [`knowledgebase/`](./knowledgebase/) folder in this repo is a drop-in template — pre-structured `raw/`, `compiled/`, `outputs/`, with AutoDream tools included. See [`knowledgebase/README-KB.md`](./knowledgebase/README-KB.md) for the quickstart.
 
 ---
 
@@ -83,6 +85,19 @@ If you want to script Obsidian's UI — use their CLI. If you want an AI agent k
 ---
 
 ## 2-minute quickstart
+
+### Option A — Use the scaffold (recommended)
+
+Clone this repo and copy the pre-built scaffold into your Obsidian vault:
+
+```bash
+git clone https://github.com/markfive-proto/obsidian-brain-vault.git
+cp -r obsidian-brain-vault/knowledgebase /path/to/your/vault/
+```
+
+Then open [`knowledgebase/README-KB.md`](./knowledgebase/README-KB.md) — it's the complete quickstart from inside the vault.
+
+### Option B — Fresh install
 
 ### 1. Install
 
@@ -411,6 +426,14 @@ obs kb eval                              # Self-test wiki IQ, track accuracy ove
 obs kb autohunt                          # Overnight research daemon for open questions
 obs kb publish <concept> --format blog   # Blog / tweet / newsletter / LinkedIn post
 obs kb watch                             # Auto-recompile on raw/ change [phase 2]
+```
+
+AutoDream — nightly background compilation:
+
+```bash
+bash knowledgebase/tools/setup-dream.sh --vault /path/to/vault   # install
+bash knowledgebase/tools/dream.sh --dry-run                       # preview
+VAULT=/path/to/vault bash knowledgebase/tools/dream.sh            # run now
 ```
 
 Headless vault ops (work without Obsidian open):
