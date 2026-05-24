@@ -56,9 +56,9 @@ obs kb ask "what do I know about X?"        # query + save to outputs/
 - **Remote MCP hosting.** Expose your vault over HTTPS so Claude.ai, mobile clients, or any AI tool can reach it from anywhere.
 - **Headless by design.** Runs on a server, in CI, in a cron job. Obsidian doesn't need to be open.
 - **A Unix tool.** Pipeable, scriptable, `--json` on every command. Compose it with anything.
-- **A Claude Code skill pack.** `/clip`, `/compile`, `/ask`, `/lint` as slash commands — same logic as the CLI, conversational interface.
+- **Three ways to use it.** CLI for scripts and automation. Claude Code slash commands (`/clip`, `/compile`, `/ask`, `/lint`) for conversational use. Claude Desktop MCP prompts for team workflows — all three speak the same underlying vault.
 - **AutoDream.** A nightly `compile → lint → stats` job that keeps your wiki fresh while you sleep. One script, works on macOS (launchd) and Linux (cron).
-- **Ready-to-use scaffold.** The [`knowledgebase/`](./knowledgebase/) folder in this repo is a drop-in template — pre-structured `raw/`, `compiled/`, `outputs/`, with AutoDream tools included. See [`knowledgebase/README-KB.md`](./knowledgebase/README-KB.md) for the quickstart.
+- **Ready-to-use scaffold.** The [`knowledgebase/`](./knowledgebase/) folder in this repo is a drop-in template — pre-structured `raw/`, `compiled/`, `outputs/`, `skills/` (all packs included), with AutoDream tools. See [`knowledgebase/README-KB.md`](./knowledgebase/README-KB.md) for the quickstart.
 
 ---
 
@@ -150,6 +150,20 @@ your-vault/
 ```
 
 Open the vault in Obsidian — everything is plain markdown with `[[wikilinks]]`.
+
+---
+
+## Three ways to use the KB loop
+
+There are three interfaces to the same underlying vault — pick the one that fits your workflow:
+
+| Interface | Best for | How |
+|---|---|---|
+| **CLI** | Scripts, automation, headless runs | `obs kb ingest / compile / ask / lint` |
+| **Claude Code skills** | Conversational coding sessions | `/clip`, `/compile`, `/ask`, `/lint` slash commands |
+| **Claude Desktop prompts** | Team workflows, Claude.ai, mobile | MCP prompt picker — select prompt, fill args |
+
+All three write to the same vault. The wiki you build with the CLI is queryable via Claude Desktop and vice versa.
 
 ---
 
@@ -394,11 +408,24 @@ claude mcp add obs --url https://obs-mcp.yourdomain.com/sse
 
 ### What the AI can now do
 
-21 MCP tools are registered (15 vault ops + 6 KB ops):
+**21 MCP tools** (15 vault ops + 6 KB ops) + **6 MCP prompts** for Claude Desktop:
 
-**KB ops:** `obs_kb_init`, `obs_kb_stats`, `obs_kb_list_raw`, `obs_kb_list_concepts`, `obs_kb_list_outputs`, `obs_kb_append_ingest_log`
+**KB tools:** `obs_kb_init`, `obs_kb_stats`, `obs_kb_list_raw`, `obs_kb_list_concepts`, `obs_kb_list_outputs`, `obs_kb_append_ingest_log`
 
-**Vault ops:** `obs_vault_info`, `obs_read_note`, `obs_write_note`, `obs_create_note`, `obs_search`, `obs_list_files`, `obs_manage_tags`, `obs_manage_properties`, `obs_daily_note`, `obs_list_links`, `obs_list_files_filtered`, `obs_links_path`, `obs_links_orphans`, `obs_vault_wordcount`
+**Vault tools:** `obs_vault_info`, `obs_read_note`, `obs_write_note`, `obs_create_note`, `obs_search`, `obs_list_files`, `obs_manage_tags`, `obs_manage_properties`, `obs_daily_note`, `obs_list_links`, `obs_list_files_filtered`, `obs_links_path`, `obs_links_orphans`, `obs_vault_wordcount`
+
+**MCP prompts (Claude Desktop slash commands):**
+
+| Prompt | What you say | What it does |
+|---|---|---|
+| `clip` | "Use the clip prompt with https://..." | Ingest a URL / PDF / repo / transcript |
+| `compile` | "Run the compile prompt" | Fold raw sources into the wiki |
+| `ask` | "Use the ask prompt: what do I know about X?" | Query + save answer to outputs/ |
+| `lint` | "Run the lint prompt" | Health check: broken links, orphans, gaps |
+| `render` | "Use the render prompt, format=slides, topic=X" | Generate a Marp deck, brief, or chart |
+| `dream` | "Run the dream prompt" | Full compile + lint + stats cycle |
+
+In Claude Desktop you'll find these in the **prompt picker** (the `+` button). Select a prompt, fill in the argument, and the skill runs — no manual copy-pasting.
 
 Ask any connected AI: *"Show me my KB stats and list 5 concept pages."* It will call the MCP tools, no prompting needed.
 
@@ -480,9 +507,11 @@ obs skills install knowledge-base --local # Install to current project
 
 **Phase 1 — shipped:**
 - `obs kb init / stats / list` (native)
-- `obs kb ingest / compile / ask / lint / render / verify / eval / autohunt` (stubs that delegate to the Claude Code skills; full logic in the skills today)
-- 6 new MCP tools for the KB loop
-- Claude Code skill pack (ingest, compile, qa, lint, render)
+- `obs kb ingest / compile / ask / lint / render / verify / eval / autohunt` (stubs that delegate to Claude Code skills; full logic in the skills today)
+- 21 MCP tools (15 vault ops + 6 KB ops)
+- 6 MCP prompts for Claude Desktop (clip, compile, ask, lint, render, dream)
+- Claude Code skill pack (ingest, compile, qa, lint, render) in `knowledgebase/skills/`
+- AutoDream nightly daemon (`knowledgebase/tools/`)
 
 **Phase 2 — next:**
 - Native LLM-backed `ingest / compile / ask / lint` via LiteLLM or Anthropic SDK

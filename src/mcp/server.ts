@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Vault } from '../vault.js';
 import { getVaultPath } from '../config.js';
 import { registerTools } from './tools.js';
+import { registerPrompts } from './prompts.js';
 
 const args = process.argv.slice(2);
 let vaultPath: string | undefined;
@@ -29,6 +30,7 @@ const server = new McpServer({
 });
 
 registerTools(server, vault);
+registerPrompts(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

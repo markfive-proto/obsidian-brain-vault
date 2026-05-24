@@ -33,6 +33,19 @@ knowledgebase/
 │   ├── verify/           fact-check reports from obs kb verify
 │   └── dream/            nightly AutoDream logs
 │
+├── skills/           ← All Claude Code skill packs (read the SKILL.md in each folder)
+│   ├── ingest/           /clip /paper /repo /transcript — ingest sources
+│   ├── compile/          /compile — fold raw into the wiki
+│   ├── qa/               /ask /deep /compare — query the wiki
+│   ├── lint/             /lint — health check
+│   ├── render/           /slides /brief /chart /graph — render outputs
+│   ├── capture/          /dump /capture /quick — quick-capture
+│   ├── clarify/          /articulate /expand /simplify
+│   ├── connect/          /connect /trace /drift
+│   ├── reflect/          /emerge /challenge /growth
+│   ├── act/              /next /decide /graduate
+│   └── review/           /today /closeday /weekly
+│
 └── tools/            ← AutoDream automation
     ├── dream.sh          nightly compile + lint + stats script
     └── setup-dream.sh    install dream.sh as launchd / cron job
@@ -157,9 +170,32 @@ This patches Claude Desktop, Claude Code, Cursor, and Windsurf configs in one sh
 
 ---
 
+## Use KB skills in Claude Desktop (MCP prompts)
+
+When `obs-mcp` is connected to Claude Desktop, **6 KB prompts** appear in the prompt picker (the `+` button next to the chat input). These are the same as the CLI commands and Claude Code skills — just a point-and-click interface:
+
+| Prompt | What it does |
+|---|---|
+| `clip` | Ingest a URL, PDF, repo, or transcript into `raw/` |
+| `compile` | Fold raw sources into the wiki (incremental or full) |
+| `ask` | Query the wiki — answer saved to `outputs/answers/` |
+| `lint` | Health check: broken links, orphans, gaps, next-writes |
+| `render` | Generate slides, a brief, a chart, or a concept graph |
+| `dream` | Full compile → lint → stats cycle (AutoDream on-demand) |
+
+**How to use:**
+1. Open Claude Desktop with `obs-mcp` connected (see setup above).
+2. Click `+` → select a prompt (e.g., `clip`).
+3. Fill in the argument (e.g., the URL you want to ingest).
+4. Claude runs the full skill workflow and saves the output to your vault.
+
+No need to remember command syntax — just pick and fill.
+
+---
+
 ## Install the Claude Code skill packs
 
-The skills in this repo give Claude Code slash commands that mirror every `obs kb` command:
+The `skills/` folder in this scaffold contains all skill packs. Install them into Claude Code:
 
 ```bash
 # from the obsidian-brain-vault repo root
@@ -180,6 +216,8 @@ Then in any Claude Code session:
 /ask what do I know about X?       → query + save answer
 /lint                              → health check
 ```
+
+The `skills/` folder in this scaffold is a copy of the repo's full skill pack library — you can browse and read the SKILL.md files directly in Obsidian.
 
 ---
 
