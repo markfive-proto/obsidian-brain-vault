@@ -74,6 +74,7 @@ export async function ingestRepo(
 
   const frontmatter = yamlFrontmatter({
     title,
+    date: new Date().toISOString().slice(0, 10),
     source_url: meta.html_url,
     source_type: 'repo',
     owner,

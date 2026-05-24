@@ -165,11 +165,13 @@ export async function ingestArticle(
     return { type: 'article', path: relativePath, absolutePath, title, wordCount, duplicate: true, fetchedVia };
   }
 
+  const now = new Date();
   const frontmatter = yamlFrontmatter({
     title,
+    date: now.toISOString().slice(0, 10),
     source_url: source,
     source_type: 'article',
-    ingested_at: new Date().toISOString(),
+    ingested_at: now.toISOString(),
     author: doc.author,
     published: doc.published,
     domain: doc.domain,

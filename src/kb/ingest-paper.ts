@@ -90,6 +90,73 @@ function pdfToText(pdfPath: string): string {
   return r.stdout;
 }
 
+interface PdfinfoMeta {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string[];
+  date?: string;  // YYYY-MM-DD
+}
+
+/**
+ * Extract metadata from PDF using pdfinfo. Much more reliable than scanning
+ * body text for titles — covers author, creation date, and embedded keywords.
+ * Returns empty object if pdfinfo is unavailable or the PDF has no metadata.
+ */
+function extractPdfinfoMeta(pdfPath: string): PdfinfoMeta {
+  const r = spawnSync('pdfinfo', [pdfPath], { encoding: 'utf-8' });
+  if (r.status !== 0 || !r.stdout) return {};
+
+  const lines = r.stdout.split('\n');
+  const get = (key: string): string | undefined => {
+    const line = lines.find(l => l.toLowerCase().startsWith(key.toLowerCase() + ':'));
+    return line ? line.slice(line.indexOf(':') + 1).trim() : undefined;
+  };
+
+  const rawDate = get('CreationDate');
+  let date: string | undefined;
+  if (rawDate) {
+    // pdfinfo dates: "Mon Jan 15 10:30:00 2024" or "2024-01-15 10:30:00"
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) date = d.toISOString().slice(0, 10);
+    } catch { /* ignore */ }
+  }
+
+  const rawKeywords = get('Keywords');
+  const keywords = rawKeywords
+    ? rawKeywords.split(/[,;]/).map(k => k.trim()).filter(Boolean)
+    : undefined;
+
+  return {
+    title: get('Title') || undefined,
+    author: get('Author') || undefined,
+    subject: get('Subject') || undefined,
+    keywords,
+    date,
+  };
+}
+
+/**
+ * Find the most likely title line from raw PDF text. Skips blank lines,
+ * lines that look like page numbers or copyright notices, and prefers the
+ * first substantial line (>20 chars, not all-caps short string).
+ */
+function extractTitleFromText(plainText: string): string | undefined {
+  const lines = plainText.split('\n').map(l => l.trim()).filter(Boolean);
+  for (const line of lines.slice(0, 30)) {
+    // Skip page headers/footers: numbers, short all-caps, copyright lines
+    if (/^\d+$/.test(line)) continue;
+    if (/^(page|copyright|\(c\)|©|\d{4}\s*(IEEE|ACM|Springer))/i.test(line)) continue;
+    if (line.length < 8) continue;
+    // Prefer lines >20 chars that aren't pure uppercase abbreviations
+    if (line.length >= 20 || (line.length >= 8 && !/^[A-Z\s\d]+$/.test(line))) {
+      return line.slice(0, 200);
+    }
+  }
+  return undefined;
+}
+
 /** Crude splitter: group text by blank-line paragraphs, preserve structure. */
 function asMarkdownBody(plain: string): string {
   return plain
@@ -131,10 +198,24 @@ export async function ingestPaper(
       Promise.resolve(pdfToText(pdfPath)),
     ]);
 
-    const title = (meta?.title || plainText.split('\n').find(l => l.trim().length > 10)?.trim() || 'untitled').slice(0, 200);
-    const year = (meta?.published ?? new Date().toISOString()).slice(0, 4);
-    const firstAuthorSlug = meta?.authors?.[0]
-      ? slugify(meta.authors[0].split(/\s+/).slice(-1)[0], 30)
+    // For non-arXiv PDFs, pull richer metadata from the PDF's own metadata fields.
+    const pdfinfoMeta = !arxivId ? extractPdfinfoMeta(pdfPath) : {};
+
+    const title = (
+      meta?.title ||
+      pdfinfoMeta.title ||
+      extractTitleFromText(plainText) ||
+      'untitled'
+    ).slice(0, 200);
+
+    const dateStr = (meta?.published ?? pdfinfoMeta.date ?? new Date().toISOString()).slice(0, 10);
+    const year = dateStr.slice(0, 4);
+
+    const authors: string[] | undefined = meta?.authors ??
+      (pdfinfoMeta.author ? pdfinfoMeta.author.split(/[,;&]/).map(a => a.trim()).filter(Boolean) : undefined);
+
+    const firstAuthorSlug = authors?.[0]
+      ? slugify(authors[0].split(/\s+/).slice(-1)[0], 30)
       : null;
     const titleSlug = slugify(title, 40);
     const filenameBase = firstAuthorSlug
@@ -157,15 +238,18 @@ export async function ingestPaper(
     const wordCount = body.split(/\s+/).filter(Boolean).length;
     const frontmatter = yamlFrontmatter({
       title,
-      authors: meta?.authors,
+      date: dateStr,
+      authors,
       year,
       arxiv_id: meta?.arxivId ?? arxivId ?? undefined,
       primary_category: meta?.primaryCategory,
+      subject: pdfinfoMeta.subject ?? undefined,
+      keywords: pdfinfoMeta.keywords?.length ? pdfinfoMeta.keywords : undefined,
       source_url: isUrl ? source : undefined,
       source_path: isUrl ? undefined : source,
-      source_type: 'paper',
+      source_type: arxivId ? 'paper' : 'pdf',
       ingested_at: new Date().toISOString(),
-      tags: ['raw', 'paper', 'needs-compile'],
+      tags: ['raw', arxivId ? 'paper' : 'pdf', 'needs-compile'],
     });
 
     const abstractSection = meta?.summary ? `\n## Abstract\n\n${meta.summary}\n` : '';

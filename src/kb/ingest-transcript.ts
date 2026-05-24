@@ -133,11 +133,11 @@ export async function ingestTranscript(
 
   const frontmatter = yamlFrontmatter({
     title,
+    date: dateStamp,
     source_url: meta.webpage_url ?? source,
     source_type: 'transcript',
     video_id: id,
     channel: meta.channel ?? meta.uploader,
-    uploaded: dateStamp,
     duration_seconds: meta.duration,
     view_count: meta.view_count,
     ingested_at: new Date().toISOString(),

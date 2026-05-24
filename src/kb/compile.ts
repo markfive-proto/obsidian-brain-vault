@@ -218,12 +218,15 @@ function upsertConceptPage(
   const relPath = join('compiled', concept.kind === 'person' ? 'people' : concept.kind === 'org' ? 'orgs' : 'concepts', filename);
 
   if (!existsSync(absPath)) {
+    const now = new Date();
     const fm = yamlFrontmatter({
       title: concept.name,
+      aliases: [concept.name],
       type: concept.kind,
+      date: now.toISOString().slice(0, 10),
       tags: ['compiled', ...(concept.tags ?? [])],
-      first_seen: new Date().toISOString(),
-      last_updated: new Date().toISOString(),
+      first_seen: now.toISOString(),
+      last_updated: now.toISOString(),
       sources_count: 1,
     });
     const body = renderNewConceptBody(concept, sourceBasename, openQuestions);
@@ -271,6 +274,14 @@ function mergeExistingConcept(raw: string, concept: ExtractedConcept, sourceBase
   const fm = parsed.data ?? {};
   fm.last_updated = new Date().toISOString();
   fm.sources_count = Number(fm.sources_count ?? 0) + 1;
+  // Backfill aliases if missing — needed for wikilink resolution in Obsidian.
+  if (!fm.aliases || (Array.isArray(fm.aliases) && fm.aliases.length === 0)) {
+    fm.aliases = [concept.name];
+  }
+  // Backfill date if missing — needed for Obsidian sorting and Dataview queries.
+  if (!fm.date) {
+    fm.date = (typeof fm.first_seen === 'string' ? fm.first_seen : new Date().toISOString()).slice(0, 10);
+  }
   if (!Array.isArray(fm.tags)) fm.tags = fm.tags ? [fm.tags].flat() : [];
   for (const tag of concept.tags ?? []) {
     if (!fm.tags.includes(tag)) fm.tags.push(tag);
