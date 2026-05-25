@@ -299,41 +299,190 @@ claude mcp add obs obs-mcp --vault /absolute/path/to/your/vault
 
 ## Remote MCP — expose your vault to Claude.ai, mobile, or any HTTP client
 
-By default `obs-mcp` speaks stdio, which only works on the same machine. To use your vault from **Claude.ai web chat**, a second device, or any tool that only supports HTTP MCP, wrap it with [`supergateway`](https://github.com/supermaven-inc/supergateway):
+By default `obs-mcp` speaks stdio — it only works on the same machine. To use your vault from **Claude.ai web chat**, a second device, or any tool that only supports HTTP MCP, you need three layers:
 
-### 1. Install supergateway
+| Layer | What it does |
+|---|---|
+| **supergateway** (streamableHttp mode) | Wraps `obs-mcp` stdio as an HTTP MCP endpoint |
+| **OAuth proxy** | Serves OAuth 2.1 + PKCE discovery so Claude mobile / web will accept the server |
+| **Cloudflare Tunnel** | Exposes localhost over HTTPS with zero port-forwarding |
+
+> **Why streamableHttp and not SSE?**
+> SSE keeps a single long-lived connection per client. When a reverse proxy or the client reconnects, `supergateway` tries to call `connect()` on the same internal MCP instance and crashes. `streamableHttp` spawns a fresh stdio process for every POST — no persistent connection, no crash loop, no buffering issues.
+
+> **Why OAuth?**
+> Claude mobile and Claude.ai web enforce RFC 8414 OAuth 2.1 discovery (`/.well-known/oauth-authorization-server`) before accepting any custom MCP server. Without it the server is silently rejected. The proxy auto-approves every authorization — actual security comes from keeping the endpoint URL private.
+
+### 1. Install dependencies
 
 ```bash
 npm i -g supergateway
+# Node 18+ built-ins only needed for the OAuth proxy — no extra packages
 ```
 
-### 2. Start the HTTP/SSE bridge
+### 2. Create the OAuth proxy
 
-```bash
-supergateway \
-  --stdio "obs-mcp --vault /absolute/path/to/your/vault" \
-  --port 4321 \
-  --header "X-Accel-Buffering: no"
+Save the following as `~/bin/obs-oauth-proxy.mjs` (no npm dependencies — uses Node built-ins only):
+
+```js
+#!/usr/bin/env node
+// Minimal OAuth 2.1 + PKCE proxy in front of supergateway.
+// Handles /.well-known/oauth-authorization-server + /oauth/* endpoints.
+// Proxies everything else to supergateway on MCP_PORT.
+
+import http from 'node:http'
+import crypto from 'node:crypto'
+import { URL } from 'node:url'
+
+const PORT     = parseInt(process.env.OAUTH_PORT ?? '4321')
+const MCP_PORT = parseInt(process.env.MCP_PORT   ?? '4322')
+const BASE_URL = process.env.BASE_URL ?? 'https://obs-mcp.yourdomain.com'
+
+const pendingCodes = new Map()
+const validTokens  = new Set()
+
+function sendJson(res, status, body) {
+  const data = JSON.stringify(body)
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) })
+  res.end(data)
+}
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let buf = ''
+    req.on('data', c => buf += c)
+    req.on('end', () => {
+      try {
+        resolve(req.headers['content-type']?.includes('application/x-www-form-urlencoded')
+          ? Object.fromEntries(new URLSearchParams(buf))
+          : JSON.parse(buf || '{}'))
+      } catch { resolve({}) }
+    })
+    req.on('error', reject)
+  })
+}
+
+function proxyToMcp(req, res) {
+  const opts = {
+    hostname: '127.0.0.1', port: MCP_PORT, path: req.url,
+    method: req.method, headers: { ...req.headers, host: `localhost:${MCP_PORT}` },
+  }
+  const proxy = http.request(opts, up => { res.writeHead(up.statusCode, up.headers); up.pipe(res) })
+  proxy.on('error', err => {
+    if (!res.headersSent) sendJson(res, 502, { error: 'mcp_unreachable', detail: err.message })
+    else res.destroy()
+  })
+  req.pipe(proxy)
+}
+
+http.createServer(async (req, res) => {
+  const url  = new URL(req.url, `http://localhost:${PORT}`)
+  const path = url.pathname
+
+  if (req.method === 'GET' && path === '/.well-known/oauth-authorization-server') {
+    return sendJson(res, 200, {
+      issuer: BASE_URL,
+      authorization_endpoint: `${BASE_URL}/oauth/authorize`,
+      token_endpoint: `${BASE_URL}/oauth/token`,
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code'],
+      code_challenge_methods_supported: ['S256'],
+      scopes_supported: ['mcp'],
+    })
+  }
+
+  if (req.method === 'GET' && path === '/oauth/authorize') {
+    const redirectUri   = url.searchParams.get('redirect_uri')
+    const state         = url.searchParams.get('state')
+    const codeChallenge = url.searchParams.get('code_challenge')
+    if (!redirectUri) return sendJson(res, 400, { error: 'invalid_request' })
+    const code = crypto.randomBytes(20).toString('hex')
+    pendingCodes.set(code, { redirectUri, codeChallenge, expires: Date.now() + 600_000 })
+    const redirect = new URL(redirectUri)
+    redirect.searchParams.set('code', code)
+    if (state) redirect.searchParams.set('state', state)
+    res.writeHead(302, { Location: redirect.toString() })
+    return res.end()
+  }
+
+  if (req.method === 'POST' && path === '/oauth/token') {
+    const { grant_type, code, code_verifier } = await parseBody(req)
+    if (grant_type !== 'authorization_code') return sendJson(res, 400, { error: 'unsupported_grant_type' })
+    const stored = pendingCodes.get(code)
+    if (!stored || Date.now() > stored.expires) return sendJson(res, 400, { error: 'invalid_grant' })
+    if (stored.codeChallenge) {
+      if (!code_verifier) return sendJson(res, 400, { error: 'invalid_grant' })
+      const hash = crypto.createHash('sha256').update(code_verifier).digest('base64url')
+      if (hash !== stored.codeChallenge) return sendJson(res, 400, { error: 'invalid_grant' })
+    }
+    pendingCodes.delete(code)
+    const token = crypto.randomBytes(32).toString('hex')
+    validTokens.add(token)
+    return sendJson(res, 200, { access_token: token, token_type: 'bearer', expires_in: 31_536_000, scope: 'mcp' })
+  }
+
+  // GET on the MCP path → SSE keepalive stream (Claude mobile opens this for server-push)
+  if (req.method === 'GET' && path.endsWith('/mcp')) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' })
+    res.write(': connected\n\n')
+    const ping = setInterval(() => { if (res.destroyed) return clearInterval(ping); res.write(': ping\n\n') }, 25_000)
+    req.on('close', () => clearInterval(ping))
+    return
+  }
+
+  proxyToMcp(req, res)
+}).listen(PORT, '0.0.0.0', () => console.log(`[obs-oauth-proxy] :${PORT} → MCP :${MCP_PORT}`))
 ```
 
-> **Why `--header "X-Accel-Buffering: no"`?** This tells Cloudflare (and nginx-based proxies) not to buffer the SSE response stream. Without it, the connection silently stalls when routed through a reverse proxy.
+### 3. Create the gateway launch script
 
-Your vault is now reachable at `http://localhost:4321/sse`.
-
-### 3. Expose it over the internet with Cloudflare Tunnel (optional)
-
-If you want to reach the vault from Claude.ai or any remote client:
+Save as `~/bin/run-obs-gateway.sh`:
 
 ```bash
-# Install cloudflared once
+#!/bin/bash
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
+VAULT="/absolute/path/to/your/vault"
+NODE="$(which node)"
+SUPERGATEWAY="$(npm root -g)/supergateway/dist/index.js"
+OBS_MCP="$(npm root -g)/obsidian-brain-vault/dist/mcp/server.js"
+
+# Pick a secret path segment — this is your only access control
+# Generate one: openssl rand -hex 16
+SECRET_PATH="your-secret-path-here"
+
+# supergateway on internal port (streamableHttp, not SSE)
+"$NODE" "$SUPERGATEWAY" \
+  --stdio "$NODE $OBS_MCP --vault $VAULT" \
+  --outputTransport streamableHttp \
+  --streamableHttpPath "/${SECRET_PATH}/mcp" \
+  --port 4322 &
+
+# OAuth proxy on external port (facing the reverse proxy / tunnel)
+BASE_URL="https://obs-mcp.yourdomain.com" \
+OAUTH_PORT=4321 \
+MCP_PORT=4322 \
+exec "$NODE" ~/bin/obs-oauth-proxy.mjs
+```
+
+```bash
+chmod +x ~/bin/run-obs-gateway.sh
+```
+
+Keep it alive with a LaunchAgent (macOS) — set `ProgramArguments` to `["bash", "/Users/you/bin/run-obs-gateway.sh"]`, `RunAtLoad: true`, `KeepAlive: true`.
+
+### 4. Expose it with Cloudflare Tunnel
+
+```bash
 brew install cloudflared
-
-# Authenticate and create a tunnel
 cloudflared tunnel login
 cloudflared tunnel create obs-mcp
+cloudflared tunnel route dns obs-mcp obs-mcp.yourdomain.com
+```
 
-# Create ~/.cloudflared/config.yml
-cat > ~/.cloudflared/config.yml << 'EOF'
+`~/.cloudflared/config.yml`:
+
+```yaml
 tunnel: <your-tunnel-id>
 credentials-file: ~/.cloudflared/<your-tunnel-id>.json
 
@@ -341,64 +490,53 @@ ingress:
   - hostname: obs-mcp.yourdomain.com
     service: http://localhost:4321
     originRequest:
-      disableChunkedEncoding: true   # required for SSE streaming
-      tcpKeepAlive: 30s
       http2Origin: false
+      noTLSVerify: true
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
   - service: http_status:404
-EOF
-
-# Route your hostname to the tunnel
-cloudflared tunnel route dns obs-mcp obs-mcp.yourdomain.com
-
-# Run the tunnel
-cloudflared tunnel run
 ```
-
-Keep the tunnel alive on macOS with a LaunchAgent:
 
 ```bash
-# Create ~/Library/LaunchAgents/com.yourname.cloudflared-obs.plist
-# Set ProgramArguments to: cloudflared tunnel --config ~/.cloudflared/config.yml run
-# Set RunAtLoad: true, KeepAlive: true
-launchctl load ~/Library/LaunchAgents/com.yourname.cloudflared-obs.plist
+cloudflared tunnel run obs-mcp
 ```
 
-### 4. Connect any remote client
+### 5. Connect any remote client
 
-Once the tunnel is running:
+Replace `obs-mcp.yourdomain.com` and `your-secret-path-here` with your actual values.
 
-**Claude Desktop** — Claude Desktop only speaks stdio, so bridge the SSE stream with `mcp-remote`:
+**Claude Desktop** (Mac / Windows — stdio only, needs `mcp-remote` bridge):
 
 ```json
 {
   "mcpServers": {
     "obs-remote": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://obs-mcp.yourdomain.com/sse"]
+      "args": ["-y", "mcp-remote@latest", "https://obs-mcp.yourdomain.com/your-secret-path-here/mcp"]
     }
   }
 }
 ```
 
-First launch takes 10–20 s while `npx` fetches `mcp-remote`. After that it's instant.
+First launch takes 10–20 s while `npx` fetches `mcp-remote` and completes the OAuth flow. After that the token is cached and it's instant.
 
-**Claude.ai web → Settings → Integrations → Add MCP Server** (supports SSE URLs natively):
+**Claude.ai web → Settings → Integrations → Add MCP Server:**
 ```
-https://obs-mcp.yourdomain.com/sse
+https://obs-mcp.yourdomain.com/your-secret-path-here/mcp
 ```
 
 **Claude Code:**
 ```bash
-claude mcp add obs --url https://obs-mcp.yourdomain.com/sse
+claude mcp add obs-remote --url https://obs-mcp.yourdomain.com/your-secret-path-here/mcp
 ```
 
-**Cursor / Windsurf** (via `mcp-remote`, same as Claude Desktop):
+**Cursor / Windsurf** (same `mcp-remote` bridge as Claude Desktop):
 ```json
 {
   "mcpServers": {
     "obs-remote": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://obs-mcp.yourdomain.com/sse"]
+      "args": ["-y", "mcp-remote@latest", "https://obs-mcp.yourdomain.com/your-secret-path-here/mcp"]
     }
   }
 }
