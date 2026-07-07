@@ -177,6 +177,7 @@ All three write to the same vault. The wiki you build with the CLI is queryable 
 # Clone and link if you haven't already
 git clone https://github.com/markfive-proto/obsidian-brain-vault.git
 cd obsidian-brain-vault && pnpm install && pnpm build && pnpm link --global
+# npm works too: npm install && npm run build && npm link
 
 # Install a pack globally (available in all Claude Code projects)
 obs skills install knowledge-base          # The Karpathy pack (ingest/compile/qa/lint/render)
@@ -694,14 +695,18 @@ obs kb list concepts --json | jq -r '.[]'
 
 ## Development
 
+The repo uses **pnpm** (its committed lockfile is `pnpm-lock.yaml`), but **npm works too** — the
+equivalent command is shown after each line. pnpm gives you exact-pinned, reproducible installs;
+npm resolves the `package.json` ranges fresh.
+
 ```bash
 git clone https://github.com/markfive-proto/obsidian-brain-vault.git
 cd obsidian-brain-vault
-pnpm install
-pnpm build             # production build
-pnpm dev               # watch mode
-pnpm test              # vitest (67 tests currently)
-pnpm link --global     # expose `obs` and `obs-mcp` binaries
+pnpm install           # or: npm install
+pnpm build             # or: npm run build   — production build
+pnpm dev               # or: npm run dev      — watch mode
+pnpm test              # or: npm test         — vitest (220 tests currently)
+pnpm link --global     # or: npm link         — expose `obs` and `obs-mcp` binaries
 ```
 
 Code layout:
@@ -734,8 +739,7 @@ PRs welcome — especially:
 
 ```bash
 # Fork, clone, branch
-pnpm install
-pnpm build && pnpm test
+pnpm install && pnpm build && pnpm test      # or: npm install && npm run build && npm test
 # Submit PR against main
 ```
 
