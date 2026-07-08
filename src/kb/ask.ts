@@ -5,6 +5,10 @@ import matter from 'gray-matter';
 import { compiledDir, outputsDir, rawDir } from './paths.js';
 import { llmObject, resolveLLMConfig, type LLMConfig } from './llm.js';
 import { slugify, yamlFrontmatter } from './ingest.js';
+import { Vault } from '../vault.js';
+import { loadIndex } from './index-store.js';
+import { hybridSearch } from './hybrid-search.js';
+import type { EmbedFn } from './embeddings.js';
 
 // ---- Schema -----------------------------------------------------------------
 
@@ -41,11 +45,13 @@ type Answer = z.infer<typeof AnswerSchema>;
 // ---- Options ----------------------------------------------------------------
 
 export interface AskOptions {
-  deep?: boolean;                 // reserved for multi-step research (2.3b.2)
+  deep?: boolean;                 // second retrieval round seeded by round-1 gaps (needs the embedding index)
   includeRaw?: boolean;           // also load raw/ sources, not just compiled/
   budgetBytes?: number;           // context budget in bytes
+  retrievalK?: number;            // max notes pulled by retrieval (default 12)
   config?: LLMConfig;
   addBacklinks?: boolean;         // append [[<answer>]] backlink to each cited concept page
+  embedFn?: EmbedFn;              // injectable for tests
 }
 
 export interface AskResult {
@@ -53,6 +59,8 @@ export interface AskResult {
   answer: Answer;
   sourcesConsidered: number;
   contextBytes: number;
+  contextMode: 'retrieval' | 'corpus';
+  rounds: number;
   answerPath: string;             // relative to vault root
   answerAbsPath: string;
 }
@@ -64,11 +72,21 @@ const DEFAULT_BUDGET = 280_000;   // ~70K tokens, comfortably fits Sonnet/Gemini
 export async function askKb(vaultPath: string, question: string, opts: AskOptions = {}): Promise<AskResult> {
   const config = opts.config ?? resolveLLMConfig();
   const budget = opts.budgetBytes ?? DEFAULT_BUDGET;
+  const includeRaw = opts.includeRaw ?? false;
 
-  const ctx = loadWikiContext(vaultPath, {
+  // Prefer retrieval when the embedding index exists: pull only the notes
+  // relevant to the question instead of the whole corpus. Falls back to the
+  // corpus-in-budget load when no index has been built yet.
+  let ctx = await loadRetrievedContext(vaultPath, question, {
     budgetBytes: budget,
-    includeRaw: opts.includeRaw ?? false,
+    includeRaw,
+    k: opts.retrievalK ?? 12,
+    embedFn: opts.embedFn,
   });
+  const contextMode: 'retrieval' | 'corpus' = ctx ? 'retrieval' : 'corpus';
+  if (!ctx) {
+    ctx = loadWikiContext(vaultPath, { budgetBytes: budget, includeRaw });
+  }
 
   if (ctx.items.length === 0) {
     throw new Error(
@@ -76,6 +94,54 @@ export async function askKb(vaultPath: string, question: string, opts: AskOption
     );
   }
 
+  let rounds = 1;
+  let answer = await askOnce(question, ctx, config);
+
+  // Deep mode: one extra retrieval round seeded by what round 1 said the
+  // context was missing — then re-answer with the widened context.
+  if (opts.deep && contextMode === 'retrieval' && answer.gaps.length > 0) {
+    const gapQuery = `${question}\n${answer.gaps.join('\n')}`;
+    const extra = await loadRetrievedContext(vaultPath, gapQuery, {
+      budgetBytes: Math.floor(budget / 2),
+      includeRaw,
+      k: opts.retrievalK ?? 12,
+      embedFn: opts.embedFn,
+      excludePaths: new Set(ctx.items.map(i => i.relPath)),
+    });
+    if (extra && extra.items.length > 0) {
+      ctx = {
+        items: [...ctx.items, ...extra.items],
+        totalBytes: ctx.totalBytes + extra.totalBytes,
+      };
+      answer = await askOnce(question, ctx, config);
+      rounds = 2;
+    }
+  }
+
+  const { absPath, relPath } = writeAnswerFile(vaultPath, question, answer);
+
+  if (opts.addBacklinks !== false) {
+    const basenameOfAnswer = relPath.split('/').pop()!.replace(/\.md$/, '');
+    appendBacklinksToSources(vaultPath, answer, basenameOfAnswer, ctx.items);
+  }
+
+  return {
+    question,
+    answer,
+    sourcesConsidered: ctx.items.length,
+    contextBytes: ctx.totalBytes,
+    contextMode,
+    rounds,
+    answerPath: relPath,
+    answerAbsPath: absPath,
+  };
+}
+
+async function askOnce(
+  question: string,
+  ctx: { items: WikiItem[]; totalBytes: number },
+  config: LLMConfig,
+): Promise<Answer> {
   const contextBlock = ctx.items
     .map(i => `### [[${i.basename}]]\n<!-- path: ${i.relPath} -->\n${i.content}`)
     .join('\n\n---\n\n');
@@ -92,7 +158,7 @@ export async function askKb(vaultPath: string, question: string, opts: AskOption
     `=== END WIKI CONTEXT ===`,
   ].join('\n');
 
-  const answer = await llmObject(prompt, AnswerSchema, {
+  return llmObject(prompt, AnswerSchema, {
     config,
     system:
       'You are querying a personal compiled knowledge wiki for its owner. Evidence discipline is critical: ' +
@@ -100,22 +166,6 @@ export async function askKb(vaultPath: string, question: string, opts: AskOption
       'Be terse, specific, and honest about gaps.',
     maxTokens: 5000,
   });
-
-  const { absPath, relPath } = writeAnswerFile(vaultPath, question, answer);
-
-  if (opts.addBacklinks !== false) {
-    const basenameOfAnswer = relPath.split('/').pop()!.replace(/\.md$/, '');
-    appendBacklinksToSources(vaultPath, answer, basenameOfAnswer, ctx.items);
-  }
-
-  return {
-    question,
-    answer,
-    sourcesConsidered: ctx.items.length,
-    contextBytes: ctx.totalBytes,
-    answerPath: relPath,
-    answerAbsPath: absPath,
-  };
 }
 
 // ---- Context loading --------------------------------------------------------
@@ -126,6 +176,57 @@ interface WikiItem {
   absPath: string;
   content: string;      // body only, frontmatter stripped
   mtime: number;
+}
+
+/**
+ * Retrieval-backed context: hybrid-search the vault, keep the top distinct
+ * wiki notes (compiled/ and wiki/; raw/ only when includeRaw), and load
+ * their full bodies in rank order until the budget is hit.
+ * Returns null when no embedding index exists — the caller falls back to
+ * the corpus-in-budget load.
+ */
+async function loadRetrievedContext(
+  vaultPath: string,
+  query: string,
+  opts: { budgetBytes: number; includeRaw: boolean; k: number; embedFn?: EmbedFn; excludePaths?: Set<string> },
+): Promise<{ items: WikiItem[]; totalBytes: number } | null> {
+  if (!loadIndex(vaultPath)) return null;
+
+  const vault = new Vault(vaultPath);
+  // over-fetch chunks: several chunks may map to the same file, and some
+  // paths get filtered out below
+  const report = await hybridSearch(vault, query, { mode: 'hybrid', k: opts.k * 4, embedFn: opts.embedFn });
+
+  const allowed = (path: string): boolean => {
+    if (path.startsWith('compiled/') || path.startsWith('wiki/')) return true;
+    if (opts.includeRaw && path.startsWith('raw/')) return true;
+    return false;
+  };
+
+  const rankedPaths: string[] = [];
+  for (const r of report.results) {
+    if (!allowed(r.path)) continue;
+    if (opts.excludePaths?.has(r.path)) continue;
+    if (!rankedPaths.includes(r.path)) rankedPaths.push(r.path);
+    if (rankedPaths.length >= opts.k) break;
+  }
+  if (rankedPaths.length === 0) return { items: [], totalBytes: 0 };
+
+  const items: WikiItem[] = [];
+  let total = 0;
+  for (const relPath of rankedPaths) {
+    const absPath = join(vaultPath, relPath);
+    let raw: string;
+    try { raw = readFileSync(absPath, 'utf-8'); } catch { continue; }
+    const { content } = matter(raw);
+    const basename = relPath.split('/').pop()!.replace(/\.md$/, '');
+    const body = content.trim();
+    const size = Buffer.byteLength(body, 'utf-8') + Buffer.byteLength(basename, 'utf-8') + 64;
+    if (total + size > opts.budgetBytes) break;
+    items.push({ basename, relPath, absPath, content: body, mtime: 0 });
+    total += size;
+  }
+  return { items, totalBytes: total };
 }
 
 function loadWikiContext(

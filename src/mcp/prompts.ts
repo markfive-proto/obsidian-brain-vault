@@ -182,13 +182,12 @@ Every artifact gets frontmatter with type: rendered and rendered_from: [sources]
             text: `Run the ${dry_run ? 'dry-run preview of the ' : ''}dream cycle on my knowledge base.
 
 Steps:
-1. Run \`obs kb compile --vault <vault>\` ${dry_run ? '(dry run — report what would compile but do not write)' : ''}
-2. Run \`obs kb lint --vault <vault>\` ${dry_run ? '(dry run — report issues but do not write report)' : ''}
-3. Run \`obs kb stats --vault <vault>\` and show the summary.
+1. Run \`obs kb dream${dry_run ? ' --dry-run' : ''} --vault <vault>\` — it compiles a bounded batch of new raw sources, runs the health check, refreshes stale embeddings, and caches the typed-edge graph.
+2. Report: sources compiled, lint errors/warnings, files re-embedded, edges cached, and anything skipped.
 ${
   dry_run
-    ? '4. Report what WOULD have been compiled and any lint issues found — but write nothing.'
-    : '4. Write a dream log to outputs/dream/dream-YYYY-MM-DD.md summarising all three steps.'
+    ? '3. This is a preview — nothing was written.'
+    : '3. Show the dream log path (outputs/dream/dream-YYYY-MM-DD.md).'
 }
 
 This mirrors the AutoDream nightly daemon (tools/dream.sh) which runs at 2am automatically.`,

@@ -605,13 +605,14 @@ provider SDK directly and expose all ops as MCP tools.
     .command('ask <question>')
     .description('Query the wiki; saves answer to outputs/answers/ (LLM)')
     .option('--include-raw', 'Also include raw/ sources in the context (deeper, more tokens)', false)
+    .option('--deep', 'Second retrieval round seeded by round-1 gaps (needs the embedding index)', false)
     .option('--budget <bytes>', 'Max bytes of wiki context to send to the model', '280000')
     .option('--no-backlinks', 'Do not append a backlink from cited concept pages')
     .option('--provider <p>', 'LLM provider: anthropic | openai | google')
     .option('--model <m>', 'Model id override')
     .action(async (
       question: string,
-      opts: { includeRaw: boolean; budget: string; backlinks: boolean; provider?: string; model?: string },
+      opts: { includeRaw: boolean; deep: boolean; budget: string; backlinks: boolean; provider?: string; model?: string },
     ) => {
       try {
         const vaultPath = getVaultPath(program.opts().vault);
@@ -632,6 +633,7 @@ provider SDK directly and expose all ops as MCP tools.
 
         const result = await askKb(vaultPath, question, {
           includeRaw: opts.includeRaw,
+          deep: opts.deep,
           budgetBytes: parseInt(opts.budget, 10) || 280_000,
           addBacklinks: opts.backlinks,
           config,
@@ -651,7 +653,7 @@ provider SDK directly and expose all ops as MCP tools.
         console.log(chalk.bold('Confidence:'), result.answer.confidence);
         console.log(chalk.dim(result.answer.confidenceReason));
         console.log();
-        console.log(chalk.dim(`Consulted ${result.sourcesConsidered} wiki item(s), ${result.contextBytes.toLocaleString()} bytes of context.`));
+        console.log(chalk.dim(`Consulted ${result.sourcesConsidered} wiki item(s), ${result.contextBytes.toLocaleString()} bytes of context (${result.contextMode}${result.rounds > 1 ? `, ${result.rounds} rounds` : ''}).`));
         console.log();
         console.log(chalk.green(`Full answer saved to ${result.answerPath}`));
       } catch (err) {
@@ -701,6 +703,46 @@ provider SDK directly and expose all ops as MCP tools.
         console.log();
         console.log(chalk.dim(`Report: ${report.reportPath}`));
         if (report.errors > 0) process.exit(1);
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  kb
+    .command('dream')
+    .description('Nightly cycle: compile (bounded) → lint → refresh embeddings → cache graph → dream log')
+    .option('--dry-run', 'Report what would happen without writing', false)
+    .option('--compile-limit <n>', 'Max raw sources to compile this run', '3')
+    .option('--stale-days <n>', 'Lint staleness threshold in days', '90')
+    .action(async (opts: { dryRun: boolean; compileLimit: string; staleDays: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const { dreamKb } = await import('../kb/dream.js');
+        const report = await dreamKb(vaultPath, {
+          dryRun: opts.dryRun,
+          compileLimit: parseInt(opts.compileLimit, 10),
+          staleDays: parseInt(opts.staleDays, 10),
+          onProgress: jsonMode ? undefined : msg => console.log(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(report, { json: true });
+          return;
+        }
+        console.log();
+        console.log(chalk.green(`Dream cycle ${opts.dryRun ? '(dry run) ' : ''}complete`));
+        if (report.compile) console.log(`  Compiled: ${report.compile.rawRead} source(s), ${report.compile.conceptsNew} new concept(s)`);
+        if (report.lint) console.log(`  Health:   ${report.lint.errors} errors, ${report.lint.warnings} warnings across ${report.lint.scannedFiles} files`);
+        if (report.index) console.log(`  Index:    ${report.index.filesEmbedded} file(s) re-embedded, ${report.index.filesUnchanged} unchanged`);
+        if (report.graphEdges !== undefined) console.log(`  Graph:    ${report.graphEdges} typed edges cached`);
+        for (const s of report.skipped) console.log(chalk.yellow(`  Skipped ${s.phase}: ${s.reason}`));
+        if (report.logPath) console.log(chalk.dim(`  Log: ${report.logPath}`));
       } catch (err) {
         printError((err as Error).message);
         process.exit(1);

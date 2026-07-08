@@ -66,13 +66,16 @@ const kbAsk = defineTool({
   schema: {
     question: z.string().min(3).describe('The question to answer from the wiki'),
     includeRaw: z.boolean().optional().describe('Also load raw/ sources, not just compiled/ (default: false)'),
+    deep: z.boolean().optional().describe('Run a second retrieval round seeded by round-1 gaps (needs the embedding index; default: false)'),
   },
-  handler: async ({ question, includeRaw }, ctx) => {
+  handler: async ({ question, includeRaw, deep }, ctx) => {
     await ctx.progress('Loading wiki context');
-    const result = await askKb(ctx.vault.path, question, { includeRaw });
+    const result = await askKb(ctx.vault.path, question, { includeRaw, deep });
     return {
       answerPath: result.answerPath,
       sourcesConsidered: result.sourcesConsidered,
+      contextMode: result.contextMode,
+      rounds: result.rounds,
       answer: result.answer,
     };
   },
