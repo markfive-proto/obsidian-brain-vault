@@ -5,6 +5,8 @@ import { Vault } from '../vault.js';
 import { getVaultPath } from '../config.js';
 import { registerTools } from './tools.js';
 import { registerPrompts } from './prompts.js';
+import { registerAll, isReadonlyEnv } from './registry.js';
+import { kbLlmTools } from './tools-kb-llm.js';
 
 const args = process.argv.slice(2);
 let vaultPath: string | undefined;
@@ -30,6 +32,7 @@ const server = new McpServer({
 });
 
 registerTools(server, vault);
+registerAll(server, vault, kbLlmTools, { readonly: isReadonlyEnv() });
 registerPrompts(server);
 
 const transport = new StdioServerTransport();

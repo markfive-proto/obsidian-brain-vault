@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Vault } from '../vault.js';
 import { extractWikilinks, extractMarkdownLinks, extractTasks, extractInlineTags, resolveWikilink } from '../utils/markdown.js';
@@ -711,7 +711,7 @@ function registerKbTools(server: McpServer, vault: Vault): void {
         };
       }
       const line = `- ${new Date().toISOString().replace('T', ' ').slice(0, 19)}  ${type}  ${path}  "${title.replace(/"/g, '\\"')}"\n`;
-      const current = require('node:fs').readFileSync(log, 'utf-8');
+      const current = readFileSync(log, 'utf-8');
       writeFileSync(log, current + line, 'utf-8');
       return { content: [{ type: 'text' as const, text: `Appended: ${line.trim()}` }] };
     },

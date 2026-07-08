@@ -451,12 +451,14 @@ provider SDK directly and expose all ops as MCP tools.
     .option('--full', 'Re-read every raw source (ignore incremental cursor)', false)
     .option('--since <iso-date>', 'Only raw sources ingested after this timestamp')
     .option('--dry-run', 'Print what would change without writing files', false)
+    .option('--limit <n>', 'Max raw sources to process this run')
     .option('--provider <p>', 'LLM provider: anthropic | openai | google (env OBS_LLM_PROVIDER overrides)')
     .option('--model <m>', 'Model id override (env OBS_LLM_MODEL overrides)')
     .action(async (opts: {
       full: boolean;
       since?: string;
       dryRun: boolean;
+      limit?: string;
       provider?: string;
       model?: string;
     }) => {
@@ -482,6 +484,7 @@ provider SDK directly and expose all ops as MCP tools.
           full: opts.full,
           since: opts.since,
           dryRun: opts.dryRun,
+          limit: opts.limit ? parseInt(opts.limit, 10) : undefined,
           config,
           onProgress: jsonMode ? undefined : msg => console.log(chalk.dim(msg)),
         });

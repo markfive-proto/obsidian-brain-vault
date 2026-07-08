@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, unlinkSync, renameSync, existsSync, statSync, type Stats } from 'node:fs';
-import { join, resolve, relative, extname } from 'node:path';
+import { readFileSync, writeFileSync, unlinkSync, renameSync, existsSync, statSync, mkdirSync, type Stats } from 'node:fs';
+import { join, resolve, relative, extname, dirname } from 'node:path';
 import fg from 'fast-glob';
 import matter from 'gray-matter';
 
@@ -53,7 +53,9 @@ export class Vault {
   }
 
   moveFile(from: string, to: string): void {
-    renameSync(this.resolvePath(from), this.resolvePath(to));
+    const target = this.resolvePath(to);
+    mkdirSync(dirname(target), { recursive: true });
+    renameSync(this.resolvePath(from), target);
   }
 
   fileExists(filePath: string): boolean {

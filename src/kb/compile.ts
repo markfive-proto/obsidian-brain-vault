@@ -36,6 +36,7 @@ export interface CompileOptions {
   full?: boolean;
   since?: string;          // ISO date string; only raw files newer than this
   dryRun?: boolean;
+  limit?: number;          // max raw sources to process this run
   config?: LLMConfig;
   onProgress?: (msg: string) => void;
 }
@@ -52,8 +53,18 @@ export async function compileKb(vaultPath: string, opts: CompileOptions = {}): P
   const config = opts.config ?? resolveLLMConfig();
   const log = (msg: string) => opts.onProgress?.(msg);
 
-  const toCompile = findSourcesToCompile(vaultPath, opts);
-  log(`Found ${toCompile.length} raw source(s) to compile.`);
+  let entries = findEntriesToCompile(vaultPath, opts);
+  log(`Found ${entries.length} raw source(s) to compile.`);
+  // When limiting, the compile-log cursor must advance only to the last
+  // processed entry — otherwise deferred sources fall behind the cursor and
+  // are never picked up by later incremental runs.
+  let logAsOf: string | undefined;
+  if (opts.limit && entries.length > opts.limit) {
+    log(`Limiting to ${opts.limit} source(s) this run (${entries.length - opts.limit} deferred).`);
+    entries = entries.slice(0, opts.limit);
+    logAsOf = entries[entries.length - 1]?.ts;
+  }
+  const toCompile = entries.map(e => e.path);
 
   const report: CompileReport = {
     rawRead: 0,
@@ -120,7 +131,7 @@ export async function compileKb(vaultPath: string, opts: CompileOptions = {}): P
       rawAdded: report.rawRead,
       conceptsTouched: report.conceptsTouched,
       conceptsNew: report.conceptsNew,
-    });
+    }, logAsOf);
   }
 
   return report;
@@ -128,7 +139,18 @@ export async function compileKb(vaultPath: string, opts: CompileOptions = {}): P
 
 // ---- Helpers ----------------------------------------------------------------
 
+export interface IngestEntry {
+  ts: string;
+  type: string;
+  path: string;
+  title: string;
+}
+
 export function findSourcesToCompile(vaultPath: string, opts: CompileOptions): string[] {
+  return findEntriesToCompile(vaultPath, opts).map(e => e.path);
+}
+
+export function findEntriesToCompile(vaultPath: string, opts: CompileOptions): IngestEntry[] {
   const logPath = ingestLogPath(vaultPath);
   if (!existsSync(logPath)) return [];
 
@@ -145,7 +167,7 @@ export function findSourcesToCompile(vaultPath: string, opts: CompileOptions): s
 
   if (entries.length === 0) return [];
 
-  if (opts.full) return entries.map(e => e.path);
+  if (opts.full) return entries;
 
   // Default: since last compile run
   const compiledLog = join(vaultPath, 'compiled', 'COMPILE-LOG.md');
@@ -163,9 +185,7 @@ export function findSourcesToCompile(vaultPath: string, opts: CompileOptions): s
   if (opts.since) lastCompileTs = opts.since;
 
   const cutoff = lastCompileTs ? new Date(lastCompileTs.replace(' ', 'T') + 'Z').getTime() : -Infinity;
-  return entries
-    .filter(e => new Date(e.ts.replace(' ', 'T') + 'Z').getTime() > cutoff)
-    .map(e => e.path);
+  return entries.filter(e => new Date(e.ts.replace(' ', 'T') + 'Z').getTime() > cutoff);
 }
 
 function buildExtractionPrompt(title: string, fm: Record<string, unknown>, body: string): string {
@@ -387,9 +407,10 @@ export function rebuildIndex(vaultPath: string): void {
 function appendCompileLog(
   vaultPath: string,
   entry: { mode: string; rawAdded: number; conceptsTouched: number; conceptsNew: number },
+  asOf?: string,
 ): void {
   const logPath = join(compiledDir(vaultPath), 'COMPILE-LOG.md');
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const now = asOf ?? new Date().toISOString().replace('T', ' ').slice(0, 19);
   const line = `- ${now}  run=${entry.mode}  raw_added=${entry.rawAdded}  concepts_touched=${entry.conceptsTouched}  concepts_new=${entry.conceptsNew}\n`;
   if (!existsSync(logPath)) {
     const header = `# Compile Log\n\nOne line per compile run. Append-only.\n\nFormat: \`- <ISO-date>  run=<mode>  raw_added=<N>  concepts_touched=<N>  concepts_new=<N>\`\n\n---\n\n`;
