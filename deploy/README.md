@@ -49,6 +49,41 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.marcuschia.obsmcp-ga
 
 Cloudflare tunnel setup is documented in the main README ("Remote MCP" section).
 
+## One-time migration on teo (old install → repo-based deploys)
+
+The mini currently runs a hand-installed copy at
+`/opt/homebrew/lib/node_modules/obsidian-vault-cli` with hardcoded paths in
+`~/bin/run-obs-gateway.sh`. To switch it to repo-based deploys (leaves the old
+install untouched as a rollback):
+
+```bash
+ssh marcuschia@mk5-mac-mini-2.local
+
+# 1. clone + build + install the new package (obsidian-brain-vault)
+git clone https://github.com/markfive-proto/obsidian-brain-vault ~/obsidian-brain-vault
+cd ~/obsidian-brain-vault && npm install && npm run build && npm install -g .
+
+# 2. point the gateway at the new package (one line in ~/bin/run-obs-gateway.sh)
+sed -i.bak 's|obsidian-vault-cli/dist/mcp/server.js|obsidian-brain-vault/dist/mcp/server.js|' ~/bin/run-obs-gateway.sh
+
+# 3. add API keys to the gateway env so the LLM tools work remotely
+#    (edit ~/Library/LaunchAgents/com.marcuschia.obsmcp-gateway.plist →
+#     EnvironmentVariables: ANTHROPIC_API_KEY, OPENAI_API_KEY)
+launchctl bootout gui/$(id -u)/com.marcuschia.obsmcp-gateway 2>/dev/null || true
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.marcuschia.obsmcp-gateway.plist
+
+# 4. build the embedding index (needs OPENAI_API_KEY in this shell)
+obs kb index --vault ~/Documents/2ndbrain/2ndBrain
+
+# 5. (optional) retire the python dream job in favour of obs kb dream:
+#    edit ~/Library/LaunchAgents/com.marcuschia.braindream.plist to run
+#    `obs kb dream --vault ~/Documents/2ndbrain/2ndBrain` instead of tools/dream.py,
+#    then: launchctl kickstart -k gui/$(id -u)/com.marcuschia.braindream
+```
+
+Also repoint `com.marcuschia.obsmcp.plist` (the stdio server used by local
+clients on the mini) the same way as step 2 if you want it on the new build.
+
 ## Updating (every deploy)
 
 ```bash
