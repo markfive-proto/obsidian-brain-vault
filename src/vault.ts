@@ -19,7 +19,7 @@ export class Vault {
   async listFiles(pattern = '**/*.md'): Promise<string[]> {
     return fg(pattern, {
       cwd: this.path,
-      ignore: ['.obsidian/**', '.trash/**', 'node_modules/**'],
+      ignore: ['.obsidian/**', '.trash/**', 'node_modules/**', '.obs-index/**'],
       dot: false,
     });
   }
@@ -90,7 +90,7 @@ export class Vault {
   async getStats(): Promise<{ fileCount: number; folderCount: number; totalSize: number; byExtension: Record<string, number> }> {
     const allFiles = await fg('**/*', {
       cwd: this.path,
-      ignore: ['.obsidian/**', '.trash/**', 'node_modules/**'],
+      ignore: ['.obsidian/**', '.trash/**', 'node_modules/**', '.obs-index/**'],
       dot: false,
       stats: true,
       objectMode: true,

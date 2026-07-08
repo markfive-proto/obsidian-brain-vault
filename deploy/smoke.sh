@@ -28,14 +28,15 @@ echo "==> full tool surface"
 FULL=$(run_tools_list "SMOKE=1")
 echo "$FULL" | sed 's/^/  /'
 
-for t in obs_kb_ingest obs_kb_compile obs_kb_ask obs_kb_lint obs_search obs_read_note; do
+for t in obs_kb_ingest obs_kb_compile obs_kb_ask obs_kb_lint obs_tasks_list obs_tasks_create obs_tasks_claim obs_tasks_complete obs_search obs_read_note; do
   echo "$FULL" | grep -qx "$t" || { echo "FAIL: missing tool $t"; exit 1; }
 done
 
 echo "==> readonly surface (OBS_MCP_READONLY=1)"
 RO=$(run_tools_list "OBS_MCP_READONLY=1")
-for t in obs_kb_ingest obs_kb_compile obs_kb_ask obs_kb_lint; do
+for t in obs_kb_ingest obs_kb_compile obs_kb_ask obs_kb_lint obs_tasks_create obs_tasks_claim obs_tasks_complete; do
   echo "$RO" | grep -qx "$t" && { echo "FAIL: $t should be hidden in readonly mode"; exit 1; }
 done
+echo "$RO" | grep -qx "obs_tasks_list" || { echo "FAIL: obs_tasks_list should survive readonly mode"; exit 1; }
 
 echo "OK: smoke passed"

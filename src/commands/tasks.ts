@@ -3,6 +3,7 @@ import { Vault } from '../vault.js';
 import { getVaultPath } from '../config.js';
 import { output, printTable, printError, printSuccess } from '../utils/output.js';
 import { extractTasks } from '../utils/markdown.js';
+import { listTasks, createTask, claimTask, completeTask, type TaskStatus, type TaskQueue, type TaskPriority } from '../kb/tasks.js';
 
 interface TaskEntry {
   file: string;
@@ -98,6 +99,8 @@ export function registerTasksCommands(program: Command): void {
   registerTaskListCommand('all', 'List all tasks (checked and unchecked)', 'all');
   registerTaskListCommand('pending', 'List pending (unchecked) tasks', 'pending');
   registerTaskListCommand('done', 'List completed (checked) tasks', 'done');
+
+  registerQueueCommands(program, tasks);
 
   tasks
     .command('add <file> <text>')
@@ -203,6 +206,115 @@ export function registerTasksCommands(program: Command): void {
         v.writeFile(file, lines.join('\n'));
 
         printSuccess(`Removed task at line ${lineNumber} from ${file}`);
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+}
+
+// ── Structured task queue (tasks/{agent,human,done,failed}) ─────────────────
+
+function registerQueueCommands(program: Command, tasks: Command): void {
+  const queue = tasks
+    .command('queue')
+    .description('Structured task queue: one markdown file per task under tasks/{agent,human}');
+
+  const openVault = (): Vault => {
+    const v = new Vault(getVaultPath(program.opts().vault));
+    if (!v.isValid()) {
+      printError(`Not a valid Obsidian vault: ${v.path}`);
+      process.exit(1);
+    }
+    return v;
+  };
+
+  queue
+    .command('list')
+    .description('List queued tasks')
+    .option('--status <s>', 'pending | in-progress | done | failed | cancelled')
+    .option('--queue <q>', 'agent | human')
+    .option('--archived', 'Include tasks/done and tasks/failed', false)
+    .action(async (cmdOpts: { status?: string; queue?: string; archived: boolean }) => {
+      try {
+        const v = openVault();
+        const results = await listTasks(v, {
+          status: cmdOpts.status as TaskStatus | undefined,
+          queue: cmdOpts.queue as TaskQueue | undefined,
+          includeArchived: cmdOpts.archived,
+        });
+        if (program.opts().json) {
+          output(results, { json: true });
+          return;
+        }
+        if (!results.length) {
+          console.log('No tasks found.');
+          return;
+        }
+        printTable(
+          ['ID', 'Status', 'Priority', 'Queue', 'Title'],
+          results.map(t => [t.taskId, t.status, t.priority, t.queue, t.title]),
+        );
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  queue
+    .command('create <title>')
+    .description('Create a task file in tasks/agent or tasks/human')
+    .requiredOption('--queue <q>', 'agent | human')
+    .requiredOption('--description <text>', 'What needs to be done')
+    .option('--priority <p>', 'critical | high | medium | low', 'medium')
+    .option('--product <name>', 'Product/project this belongs to')
+    .option('--context <paths...>', 'Vault-relative files the worker should read first')
+    .action(async (title: string, cmdOpts: { queue: string; description: string; priority: string; product?: string; context?: string[] }) => {
+      try {
+        const v = openVault();
+        const task = createTask(v, {
+          title,
+          queue: cmdOpts.queue as TaskQueue,
+          description: cmdOpts.description,
+          priority: cmdOpts.priority as TaskPriority,
+          product: cmdOpts.product,
+          contextFiles: cmdOpts.context,
+        });
+        if (program.opts().json) output(task, { json: true });
+        else printSuccess(`Created ${task.taskId} → ${task.path}`);
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  queue
+    .command('claim <taskId>')
+    .description('Atomically claim a pending task')
+    .option('--agent <id>', 'Claiming agent id', 'cli')
+    .action(async (taskId: string, cmdOpts: { agent: string }) => {
+      try {
+        const v = openVault();
+        const task = await claimTask(v, taskId, cmdOpts.agent);
+        if (program.opts().json) output(task, { json: true });
+        else printSuccess(`Claimed ${task.taskId} (context: ${task.contextFiles.join(', ') || 'none'})`);
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  queue
+    .command('complete <taskId>')
+    .description('Mark a task done/failed and archive it')
+    .option('--outcome <o>', 'done | failed', 'done')
+    .option('--notes <text>', 'Completion/failure notes')
+    .action(async (taskId: string, cmdOpts: { outcome: string; notes?: string }) => {
+      try {
+        const v = openVault();
+        const task = await completeTask(v, taskId, cmdOpts.outcome as 'done' | 'failed', cmdOpts.notes);
+        if (program.opts().json) output(task, { json: true });
+        else printSuccess(`${task.taskId} → ${task.status} (${task.path})`);
       } catch (err) {
         printError((err as Error).message);
         process.exit(1);

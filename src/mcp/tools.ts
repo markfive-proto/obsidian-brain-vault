@@ -117,13 +117,21 @@ export function registerTools(server: McpServer, vault: Vault): void {
 
   server.tool(
     'obs_search',
-    'Search vault content by text, path glob, or regex',
+    'Search vault content. Modes: content (substring), path (glob), regex, keyword (BM25 relevance), semantic (embeddings), hybrid (BM25 + embeddings fused — best for meaning-based queries)',
     {
-      mode: z.enum(['content', 'path', 'regex']).describe('Search mode'),
+      mode: z.enum(['content', 'path', 'regex', 'keyword', 'semantic', 'hybrid']).describe('Search mode'),
       query: z.string().describe('Search query or pattern'),
       limit: z.number().optional().default(50).describe('Max results'),
     },
     async ({ mode, query, limit }) => {
+      if (mode === 'keyword' || mode === 'semantic' || mode === 'hybrid') {
+        const { hybridSearch } = await import('../kb/hybrid-search.js');
+        const report = await hybridSearch(vault, query, { mode, k: Math.min(limit, 25) });
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }],
+        };
+      }
+
       if (mode === 'path') {
         const pattern = query.includes('*') || query.includes('?')
           ? query

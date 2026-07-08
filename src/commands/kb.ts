@@ -519,6 +519,89 @@ provider SDK directly and expose all ops as MCP tools.
     });
 
   kb
+    .command('index')
+    .description('Build/refresh the embedding index (.obs-index/) for semantic + hybrid search')
+    .option('--full', 'Re-embed every file (ignore change detection)', false)
+    .option('--provider <p>', 'Embedding provider: openai | google (env OBS_EMBED_PROVIDER overrides)')
+    .option('--model <m>', 'Embedding model override (env OBS_EMBED_MODEL overrides)')
+    .action(async (opts: { full: boolean; provider?: string; model?: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const jsonMode = program.opts().json;
+        const { resolveEmbedConfig, makeEmbedFn } = await import('../kb/embeddings.js');
+        const { buildIndex } = await import('../kb/index-store.js');
+        const config = resolveEmbedConfig({
+          provider: opts.provider as 'openai' | 'google' | undefined,
+          model: opts.model,
+        });
+        if (!jsonMode) console.log(chalk.dim(`Index: ${config.provider}/${config.model} @ ${config.dimensions} dims${opts.full ? ' (full rebuild)' : ''}`));
+        const report = await buildIndex(vault, {
+          full: opts.full,
+          meta: { provider: config.provider, model: config.model, dimensions: config.dimensions },
+          embedFn: makeEmbedFn(config),
+          onProgress: jsonMode ? undefined : msg => console.log(chalk.dim(msg)),
+        });
+        if (jsonMode) {
+          output(report, { json: true });
+          return;
+        }
+        console.log();
+        console.log(chalk.green('Index up to date'));
+        console.log(`  Files total:      ${report.filesTotal}`);
+        console.log(`  Files embedded:   ${report.filesEmbedded}`);
+        console.log(`  Files unchanged:  ${report.filesUnchanged}`);
+        console.log(`  Chunks embedded:  ${report.chunksEmbedded}`);
+        console.log();
+        console.log(chalk.dim('Try: obs kb search "your query" — or obs_search {mode: hybrid} over MCP'));
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  kb
+    .command('search <query>')
+    .description('Hybrid search (BM25 + embeddings + rank fusion) over the vault')
+    .option('--mode <m>', 'keyword | semantic | hybrid', 'hybrid')
+    .option('--limit <n>', 'Max results', '10')
+    .action(async (query: string, opts: { mode: string; limit: string }) => {
+      try {
+        const vaultPath = getVaultPath(program.opts().vault);
+        const vault = new Vault(vaultPath);
+        if (!vault.isValid()) {
+          printError(`Not a valid Obsidian vault: ${vaultPath}`);
+          process.exit(1);
+        }
+        const { hybridSearch } = await import('../kb/hybrid-search.js');
+        const report = await hybridSearch(vault, query, {
+          mode: opts.mode as 'keyword' | 'semantic' | 'hybrid',
+          k: parseInt(opts.limit, 10),
+        });
+        if (program.opts().json) {
+          output(report, { json: true });
+          return;
+        }
+        if (report.warning) console.log(chalk.yellow(report.warning));
+        if (!report.results.length) {
+          console.log('No results.');
+          return;
+        }
+        for (const r of report.results) {
+          console.log(`${chalk.bold(r.path)}${r.heading ? chalk.dim(' › ' + r.heading) : ''}  ${chalk.dim(String(r.score))}`);
+          console.log(`  ${r.snippet.replace(/\n/g, ' ').slice(0, 160)}`);
+        }
+      } catch (err) {
+        printError((err as Error).message);
+        process.exit(1);
+      }
+    });
+
+  kb
     .command('ask <question>')
     .description('Query the wiki; saves answer to outputs/answers/ (LLM)')
     .option('--include-raw', 'Also include raw/ sources in the context (deeper, more tokens)', false)
